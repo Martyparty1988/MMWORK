@@ -1,260 +1,404 @@
-// Aplikace pro pracovní výkazy a finance
-
-// Globální proměnné
-const APP_DATA = {
-    workLogs: [],
-    financeRecords: [],
-    taskCategories: [],
-    expenseCategories: [],
-    debts: [],
-    debtPayments: [],
-    rentSettings: { amount: 0, day: 1 }
+// Globální proměnné a nastavení
+const RATES = {
+    'maru': 275,
+    'marty': 400
 };
 
-// Stav časovače
-const timerState = {
+const DEDUCTION_RATES = {
+    'maru': 0.3333, // 1/3
+    'marty': 0.5    // 1/2
+};
+
+// Inicializace aplikace po načtení dokumentu
+document.addEventListener('DOMContentLoaded', function() {
+    // Nastavení aktuálního roku v patičce
+    document.getElementById('footer-year').textContent = new Date().getFullYear();
+
+    // Inicializace dat v local storage, pokud neexistují
+    initializeData();
+
+    // Inicializace navigace
+    initNavigation();
+
+    // Načtení kategorií do select elementů
+    loadCategories();
+
+    // Inicializace časovače
+    initTimer();
+
+    // Formulář pro ruční zadání záznamu
+    initManualEntryForm();
+
+    // Formulář pro přidání finančního záznamu
+    initFinanceForm();
+
+    // Inicializace správy dluhů
+    initDebtManagement();
+
+    // Inicializace filtrů a přehledů
+    initFilters();
+
+    // Inicializace grafů
+    initCharts();
+
+    // Inicializace exportu dat
+    initExportFunctions();
+
+    // Inicializace nastavení
+    initSettings();
+
+    // Nastavení dnešního data ve formulářích
+    setTodaysDate();
+});
+
+// Inicializace dat v local storage
+function initializeData() {
+    // Work logs
+    if (!localStorage.getItem('workLogs')) {
+        localStorage.setItem('workLogs', JSON.stringify([]));
+    }
+
+    // Finance records
+    if (!localStorage.getItem('financeRecords')) {
+        localStorage.setItem('financeRecords', JSON.stringify([]));
+    }
+
+    // Task categories
+    if (!localStorage.getItem('taskCategories')) {
+        localStorage.setItem('taskCategories', JSON.stringify([
+            'Administrativa', 
+            'Marketing', 
+            'Programování', 
+            'Grafika', 
+            'Schůzky'
+        ]));
+    }
+
+    // Expense categories
+    if (!localStorage.getItem('expenseCategories')) {
+        localStorage.setItem('expenseCategories', JSON.stringify([
+            'Nákupy', 
+            'Účty', 
+            'Nájem', 
+            'Doprava', 
+            'Zábava', 
+            'Jídlo'
+        ]));
+    }
+
+    // Debts
+    if (!localStorage.getItem('debts')) {
+        localStorage.setItem('debts', JSON.stringify([]));
+    }
+
+    // Debt payments
+    if (!localStorage.getItem('debtPayments')) {
+        localStorage.setItem('debtPayments', JSON.stringify([]));
+    }
+
+    // Rent settings
+    if (!localStorage.getItem('rentSettings')) {
+        localStorage.setItem('rentSettings', JSON.stringify({
+            amount: 0,
+            day: 1
+        }));
+    }
+}
+
+// Inicializace navigace
+function initNavigation() {
+    // Menu toggle
+    const menuToggle = document.getElementById('toggle-menu');
+    const mainNav = document.querySelector('.main-nav');
+
+    if (menuToggle) {
+        menuToggle.addEventListener('click', function() {
+            mainNav.classList.toggle('show');
+        });
+    }
+
+    // Navigační odkazy
+    const navLinks = document.querySelectorAll('.main-nav a');
+
+    navLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            // Skrytí menu na mobilních zařízeních po kliknutí
+            mainNav.classList.remove('show');
+
+            // Odstranění aktivní třídy ze všech odkazů
+            navLinks.forEach(l => l.classList.remove('active'));
+
+            // Přidání aktivní třídy na aktuální odkaz
+            this.classList.add('active');
+
+            // Zobrazení příslušné sekce
+            const targetId = this.getAttribute('data-section');
+            document.querySelectorAll('main > section').forEach(section => {
+                section.classList.remove('active');
+            });
+
+            document.getElementById(targetId).classList.add('active');
+
+            // Aktualizace URL hash
+            window.location.hash = targetId;
+        });
+    });
+
+    // Kontrola URL hash při načtení stránky
+    if (window.location.hash) {
+        const targetId = window.location.hash.substring(1);
+        const targetLink = document.querySelector(`.main-nav a[data-section="${targetId}"]`);
+
+        if (targetLink) {
+            targetLink.click();
+        }
+    }
+}
+
+// Načtení kategorií do select elementů
+function loadCategories() {
+    try {
+        // Načtení kategorií úkolů
+        const taskCategories = JSON.parse(localStorage.getItem('taskCategories')) || [];
+        const taskSelects = document.querySelectorAll('#timer-activity, #manual-activity, #filter-activity');
+
+        taskSelects.forEach(select => {
+            // Vyčištění stávajících možností kromě první (placeholder)
+            while (select.options.length > 1) {
+                select.remove(1);
+            }
+
+            // Přidání kategorií
+            taskCategories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                select.appendChild(option);
+            });
+        });
+
+        // Načtení kategorií výdajů
+        const expenseCategories = JSON.parse(localStorage.getItem('expenseCategories')) || [];
+        const financeCategory = document.getElementById('finance-category');
+
+        if (financeCategory) {
+            // Vyčištění stávajících možností kromě první (placeholder)
+            while (financeCategory.options.length > 1) {
+                financeCategory.remove(1);
+            }
+
+            // Přidání kategorií
+            expenseCategories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                financeCategory.appendChild(option);
+            });
+        }
+
+        // Zobrazení seznamů kategorií v nastavení
+        displayCategoryLists();
+
+        // Načtení dluhů pro formulář splátky
+        loadDebtsForPaymentForm();
+
+    } catch (error) {
+        console.error('Chyba při načítání kategorií:', error);
+    }
+}
+
+// Zobrazení seznamů kategorií v nastavení
+function displayCategoryLists() {
+    // Seznam kategorií úkolů
+    const taskCategoriesList = document.getElementById('task-categories-list');
+    const taskCategories = JSON.parse(localStorage.getItem('taskCategories')) || [];
+
+    if (taskCategoriesList) {
+        taskCategoriesList.innerHTML = '';
+
+        if (taskCategories.length === 0) {
+            taskCategoriesList.innerHTML = '<li class="empty-placeholder">Žádné kategorie úkolů.</li>';
+        } else {
+            taskCategories.forEach(category => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    ${category}
+                    <button class="delete-button" data-category="${category}" data-type="task">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                `;
+                taskCategoriesList.appendChild(li);
+            });
+
+            // Posluchače událostí pro tlačítka smazání
+            taskCategoriesList.querySelectorAll('.delete-button').forEach(button => {
+                button.addEventListener('click', deleteCategoryHandler);
+            });
+        }
+    }
+
+    // Seznam kategorií výdajů
+    const expenseCategoriesList = document.getElementById('expense-categories-list');
+    const expenseCategories = JSON.parse(localStorage.getItem('expenseCategories')) || [];
+
+    if (expenseCategoriesList) {
+        expenseCategoriesList.innerHTML = '';
+
+        if (expenseCategories.length === 0) {
+            expenseCategoriesList.innerHTML = '<li class="empty-placeholder">Žádné kategorie výdajů.</li>';
+        } else {
+            expenseCategories.forEach(category => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    ${category}
+                    <button class="delete-button" data-category="${category}" data-type="expense">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                `;
+                expenseCategoriesList.appendChild(li);
+            });
+
+            // Posluchače událostí pro tlačítka smazání
+            expenseCategoriesList.querySelectorAll('.delete-button').forEach(button => {
+                button.addEventListener('click', deleteCategoryHandler);
+            });
+        }
+    }
+}
+
+// Obsluha smazání kategorie
+function deleteCategoryHandler() {
+    const category = this.getAttribute('data-category');
+    const type = this.getAttribute('data-type');
+
+    if (confirm(`Opravdu chcete smazat kategorii "${category}"?`)) {
+        try {
+            if (type === 'task') {
+                const taskCategories = JSON.parse(localStorage.getItem('taskCategories')) || [];
+                const updatedCategories = taskCategories.filter(c => c !== category);
+                localStorage.setItem('taskCategories', JSON.stringify(updatedCategories));
+            } else if (type === 'expense') {
+                const expenseCategories = JSON.parse(localStorage.getItem('expenseCategories')) || [];
+                const updatedCategories = expenseCategories.filter(c => c !== category);
+                localStorage.setItem('expenseCategories', JSON.stringify(updatedCategories));
+            }
+
+            // Aktualizace seznamů a select elementů
+            loadCategories();
+        } catch (error) {
+            console.error('Chyba při mazání kategorie:', error);
+        }
+    }
+}
+
+// Načtení dluhů pro formulář splátky
+function loadDebtsForPaymentForm() {
+    const paymentDebtSelect = document.getElementById('payment-debt-id');
+
+    if (paymentDebtSelect) {
+        // Vyčištění stávajících možností kromě první (placeholder)
+        while (paymentDebtSelect.options.length > 1) {
+            paymentDebtSelect.remove(1);
+        }
+
+        try {
+            const debts = JSON.parse(localStorage.getItem('debts')) || [];
+
+            // Filtrování dluhů, které mají zbývající částku k zaplacení
+            const activeDebts = debts.filter(debt => {
+                const payments = JSON.parse(localStorage.getItem('debtPayments')) || [];
+                const debtPayments = payments.filter(payment => payment.debtId === debt.id);
+                const totalPaid = debtPayments.reduce((sum, payment) => sum + payment.amount, 0);
+                return totalPaid < debt.amount;
+            });
+
+            if (activeDebts.length > 0) {
+                activeDebts.forEach(debt => {
+                    const option = document.createElement('option');
+                    option.value = debt.id;
+                    option.textContent = `${debt.description} (${debt.person === 'maru' ? 'Maru' : 'Marty'}) - ${debt.amount} ${debt.currency}`;
+                    paymentDebtSelect.appendChild(option);
+                });
+            } else {
+                const option = document.createElement('option');
+                option.value = "";
+                option.textContent = "-- Žádné aktivní dluhy --";
+                option.disabled = true;
+                paymentDebtSelect.appendChild(option);
+            }
+        } catch (error) {
+            console.error('Chyba při načítání dluhů:', error);
+        }
+    }
+}
+
+// Nastavení dnešního data ve formulářích
+function setTodaysDate() {
+    const today = new Date().toISOString().substring(0, 10);
+    const dateInputs = document.querySelectorAll('input[type="date"]');
+
+    dateInputs.forEach(input => {
+        if (!input.value) {
+            input.value = today;
+        }
+    });
+}
+
+// ===== ČASOVAČ =====
+let timerState = {
     running: false,
     startTime: null,
     pausedTime: 0,
     timerInterval: null,
     person: 'maru',
     activity: '',
-    note: '',
-    rates: {
-        'maru': 275,
-        'marty': 400
-    }
+    note: ''
 };
 
-// Po načtení dokumentu inicializujeme aplikaci
-document.addEventListener('DOMContentLoaded', function() {
-    // Inicializace aplikace
-    initApp();
-});
-
-// Inicializace aplikace
-function initApp() {
-    // Nastavení aktuálního roku v patičce
-    document.getElementById('footer-year').textContent = new Date().getFullYear();
-    
-    // Inicializace lokálního úložiště
-    initializeLocalStorage();
-    
-    // Načtení dat z lokálního úložiště
-    loadDataFromLocalStorage();
-    
-    // Inicializace navigace
-    initNavigation();
-    
-    // Inicializace časovače
-    initTimer();
-    
-    // Inicializace formulářů
-    initManualEntryForm();
-    initFinanceForm();
-    initDebtForms();
-    
-    // Inicializace filtrů a přehledů
-    initFilters();
-    initCharts();
-    
-    // Inicializace exportů
-    initExports();
-    
-    // Inicializace nastavení
-    initSettings();
-    
-    // Zobrazení dat
-    displayWorkLogs();
-    displayFinanceRecords();
-    displayDeductions();
-    displayDebts();
-    updateDebtOptions();
-    
-    // Nastavení aktuálního data do formulářů
-    setCurrentDateToForms();
-}
-
-// Inicializace lokálního úložiště
-function initializeLocalStorage() {
-    if (!localStorage.getItem('workLogs')) {
-        localStorage.setItem('workLogs', JSON.stringify([]));
-    }
-    
-    if (!localStorage.getItem('financeRecords')) {
-        localStorage.setItem('financeRecords', JSON.stringify([]));
-    }
-    
-    if (!localStorage.getItem('taskCategories')) {
-        const defaultTaskCategories = ['Administrativa', 'Marketing', 'Programování', 'Grafika', 'Schůzky'];
-        localStorage.setItem('taskCategories', JSON.stringify(defaultTaskCategories));
-    }
-    
-    if (!localStorage.getItem('expenseCategories')) {
-        const defaultExpenseCategories = ['Bydlení', 'Jídlo', 'Doprava', 'Zábava', 'Ostatní'];
-        localStorage.setItem('expenseCategories', JSON.stringify(defaultExpenseCategories));
-    }
-    
-    if (!localStorage.getItem('debts')) {
-        localStorage.setItem('debts', JSON.stringify([]));
-    }
-    
-    if (!localStorage.getItem('debtPayments')) {
-        localStorage.setItem('debtPayments', JSON.stringify([]));
-    }
-    
-    if (!localStorage.getItem('rentSettings')) {
-        localStorage.setItem('rentSettings', JSON.stringify({ amount: 0, day: 1 }));
-    }
-}
-
-// Načtení dat z lokálního úložiště
-function loadDataFromLocalStorage() {
-    try {
-        APP_DATA.workLogs = JSON.parse(localStorage.getItem('workLogs')) || [];
-        APP_DATA.financeRecords = JSON.parse(localStorage.getItem('financeRecords')) || [];
-        APP_DATA.taskCategories = JSON.parse(localStorage.getItem('taskCategories')) || [];
-        APP_DATA.expenseCategories = JSON.parse(localStorage.getItem('expenseCategories')) || [];
-        APP_DATA.debts = JSON.parse(localStorage.getItem('debts')) || [];
-        APP_DATA.debtPayments = JSON.parse(localStorage.getItem('debtPayments')) || [];
-        APP_DATA.rentSettings = JSON.parse(localStorage.getItem('rentSettings')) || { amount: 0, day: 1 };
-        
-        // Naplnění select boxů kategoriemi
-        populateCategorySelects();
-        
-        // Zobrazení kategorií v nastavení
-        displayCategories();
-        
-        // Zobrazení nastavení nájmu
-        displayRentSettings();
-        
-    } catch (error) {
-        console.error('Chyba při načítání dat z úložiště:', error);
-        alert('Nastala chyba při načítání dat. Některá data nemusí být zobrazena správně.');
-    }
-}
-
-// Naplnění select boxů kategoriemi
-function populateCategorySelects() {
-    // Kategorie úkolů
-    const taskSelects = [
-        document.getElementById('timer-activity'),
-        document.getElementById('manual-activity'),
-        document.getElementById('filter-activity')
-    ];
-    
-    taskSelects.forEach(select => {
-        if (!select) return;
-        
-        // Odstranění všech možností kromě první (placeholder)
-        while (select.options.length > 1) {
-            select.remove(1);
-        }
-        
-        // Přidání možností
-        APP_DATA.taskCategories.forEach(category => {
-            const option = document.createElement('option');
-            option.value = category;
-            option.textContent = category;
-            select.appendChild(option);
-        });
-    });
-    
-    // Kategorie výdajů
-    const expenseSelect = document.getElementById('finance-category');
-    if (expenseSelect) {
-        // Odstranění všech možností kromě první (placeholder)
-        while (expenseSelect.options.length > 1) {
-            expenseSelect.remove(1);
-        }
-        
-        // Přidání možností
-        APP_DATA.expenseCategories.forEach(category => {
-            const option = document.createElement('option');
-            option.value = category;
-            option.textContent = category;
-            expenseSelect.appendChild(option);
-        });
-    }
-}
-
-// Inicializace navigace
-function initNavigation() {
-    // Navigační odkazy
-    const navLinks = document.querySelectorAll('.main-nav a');
-    
-    navLinks.forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            // Odstranění třídy active ze všech odkazů a sekcí
-            navLinks.forEach(l => l.classList.remove('active'));
-            document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
-            
-            // Přidání třídy active k aktuálnímu odkazu a cílové sekci
-            this.classList.add('active');
-            
-            const targetSection = document.getElementById(this.getAttribute('data-section'));
-            if (targetSection) {
-                targetSection.classList.add('active');
-                // Skrytí mobilního menu po kliknutí
-                document.querySelector('.main-nav').classList.remove('show');
-            }
-        });
-    });
-    
-    // Tlačítko pro zobrazení/skrytí mobilního menu
-    const menuToggle = document.getElementById('toggle-menu');
-    if (menuToggle) {
-        menuToggle.addEventListener('click', function() {
-            document.querySelector('.main-nav').classList.toggle('show');
-        });
-    }
-}
-
-// Inicializace časovače
 function initTimer() {
-    // DOM elementy
+    // Elementy časovače
     const startBtn = document.getElementById('timer-start');
     const pauseBtn = document.getElementById('timer-pause');
     const stopBtn = document.getElementById('timer-stop');
     const personRadios = document.getElementsByName('timer-person');
     const activitySelect = document.getElementById('timer-activity');
     const noteInput = document.getElementById('timer-note-input');
-    
-    // Inicializace UI
+
+    // Výchozí zobrazení časovače
     updateTimerDisplay('00:00:00');
-    
-    // Event listenery pro ovládání časovače
+
+    // Posluchače událostí pro tlačítka časovače
     if (startBtn) {
         startBtn.addEventListener('click', startTimer);
     }
-    
+
     if (pauseBtn) {
         pauseBtn.addEventListener('click', pauseTimer);
     }
-    
+
     if (stopBtn) {
         stopBtn.addEventListener('click', stopTimer);
     }
-    
-    // Poslouchání změny osoby
+
+    // Posluchače událostí pro výběr osoby
     personRadios.forEach(radio => {
         radio.addEventListener('change', function() {
             timerState.person = this.value;
             updateTimerInfo();
         });
     });
-    
-    // Poslouchání změny aktivity
+
+    // Posluchač události pro výběr úkolu
     if (activitySelect) {
         activitySelect.addEventListener('change', function() {
             timerState.activity = this.value;
             updateTimerInfo();
         });
     }
-    
-    // Poslouchání změny poznámky
+
+    // Posluchač události pro poznámku
     if (noteInput) {
         noteInput.addEventListener('input', function() {
             timerState.note = this.value;
@@ -264,116 +408,114 @@ function initTimer() {
 
 // Spuštění časovače
 function startTimer() {
-    if (!timerState.activity) {
-        alert('Prosím, vyberte nejprve úkol.');
+    // Kontrola, zda je vybrán úkol
+    if (!document.getElementById('timer-activity').value) {
+        alert('Vyberte prosím úkol před spuštěním časovače.');
         return;
     }
-    
+
     // Aktualizace stavu tlačítek
     document.getElementById('timer-start').disabled = true;
     document.getElementById('timer-pause').disabled = false;
     document.getElementById('timer-stop').disabled = false;
-    
-    // Nastavení stavu časovače
+
     timerState.running = true;
-    
+
     if (!timerState.startTime) {
         // První spuštění
         timerState.startTime = new Date().getTime() - timerState.pausedTime;
     } else {
-        // Pokračování po pauze
+        // Obnovení po pauze
         timerState.startTime = new Date().getTime() - timerState.pausedTime;
     }
-    
-    // Spuštění intervalu
+
+    // Spuštění intervalu pro aktualizaci časovače
     timerState.timerInterval = setInterval(updateTimer, 1000);
-    
-    // Aktualizace zobrazení v hlavičce
-    updateHeaderTimerVisibility(true);
+
+    // Aktualizace informací o časovači
+    updateTimerInfo();
+
+    // Zobrazení časovače v hlavičce
+    document.getElementById('header-timer').classList.remove('hidden');
 }
 
 // Pozastavení časovače
 function pauseTimer() {
     if (!timerState.running) return;
-    
+
     // Aktualizace stavu tlačítek
     document.getElementById('timer-start').disabled = false;
     document.getElementById('timer-pause').disabled = true;
-    
-    // Nastavení stavu časovače
+
     timerState.running = false;
     clearInterval(timerState.timerInterval);
-    
-    // Uložení času pozastavení
+
+    // Uložení uplynulého času
     timerState.pausedTime = new Date().getTime() - timerState.startTime;
 }
 
 // Zastavení a uložení časovače
 function stopTimer() {
     if (!timerState.startTime) return;
-    
-    // Výpočet celkového času
+
+    // Výpočet celkového času a výdělku
     const endTime = new Date().getTime();
     const totalTime = endTime - timerState.startTime;
     const totalHours = totalTime / (1000 * 60 * 60);
-    
-    // Výpočet výdělku
-    const rate = timerState.rates[timerState.person];
+    const rate = RATES[timerState.person];
     const earnings = totalHours * rate;
-    
-    // Vytvoření záznamu práce
+
+    // Vytvoření záznamu o práci
     const workLog = {
         id: generateId(),
         person: timerState.person,
-        activity: timerState.activity,
-        note: timerState.note,
+        activity: document.getElementById('timer-activity').value,
+        note: document.getElementById('timer-note-input').value,
         startTime: new Date(timerState.startTime).toISOString(),
         endTime: new Date(endTime).toISOString(),
         duration: totalTime,
         earnings: Math.round(earnings)
     };
-    
-    // Uložení do úložiště
+
+    // Uložení záznamu
     saveWorkLog(workLog);
-    
-    // Reset časovače
+
+    // Restartování časovače
     resetTimer();
-    
-    // Oznámení uživateli
-    alert(`Záznam byl uložen. Výdělek: ${Math.round(earnings)} Kč`);
-    
-    // Obnovení zobrazení záznamů
-    displayWorkLogs();
-    displayDeductions();
+
+    // Informování uživatele
+    alert(`Záznam byl uložen. Výdělek: ${Math.round(earnings)} Kč.`);
 }
 
-// Aktualizace časovače každou sekundu
+// Aktualizace zobrazení časovače
 function updateTimer() {
     if (!timerState.running || !timerState.startTime) return;
-    
+
     const currentTime = new Date().getTime();
     const elapsedTime = currentTime - timerState.startTime;
-    
+
     // Formátování času
     const formattedTime = formatTime(elapsedTime);
+
+    // Aktualizace zobrazení hlavního časovače
     updateTimerDisplay(formattedTime);
-    
-    // Aktualizace výdělku
+
+    // Aktualizace zobrazení výdělku
     updateEarningsDisplay(elapsedTime);
-    
+
     // Aktualizace časovače v hlavičce
-    updateHeaderTimer(formattedTime);
+    document.getElementById('header-timer-time').textContent = formattedTime;
 }
 
-// Formátování milisekund na HH:MM:SS
+// Formátování času v milisekundách na HH:MM:SS
 function formatTime(ms) {
     let seconds = Math.floor(ms / 1000);
     let minutes = Math.floor(seconds / 60);
     let hours = Math.floor(minutes / 60);
-    
+
     seconds = seconds % 60;
     minutes = minutes % 60;
-    
+
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
 
@@ -385,113 +527,89 @@ function updateTimerDisplay(timeString) {
     }
 }
 
-// Aktualizace informací o časovači
-function updateTimerInfo() {
-    const personDisplay = document.getElementById('timer-person');
-    const activityDisplay = document.getElementById('timer-activity-display');
-    
-    // Formátování jména osoby
-    const personName = timerState.person.charAt(0).toUpperCase() + timerState.person.slice(1);
-    
-    // Aktualizace informací o časovači
-    if (personDisplay) {
-        personDisplay.textContent = personName;
-    }
-    
-    if (activityDisplay) {
-        activityDisplay.textContent = timerState.activity ? timerState.activity : '';
-    }
-    
-    // Aktualizace časovače v hlavičce
-    const headerPersonDisplay = document.getElementById('header-timer-person');
-    const headerActivityDisplay = document.getElementById('header-timer-activity');
-    
-    if (headerPersonDisplay) {
-        headerPersonDisplay.textContent = personName;
-    }
-    
-    if (headerActivityDisplay) {
-        headerActivityDisplay.textContent = timerState.activity ? timerState.activity : '';
-    }
-}
-
 // Aktualizace zobrazení výdělku
 function updateEarningsDisplay(elapsedTime) {
     const earningsDisplay = document.getElementById('timer-earnings');
+
     if (!earningsDisplay) return;
-    
+
     const hours = elapsedTime / (1000 * 60 * 60);
-    const rate = timerState.rates[timerState.person];
+    const rate = RATES[timerState.person];
     const earnings = hours * rate;
-    
+
     earningsDisplay.textContent = `${Math.round(earnings)} Kč`;
 }
 
-// Aktualizace časovače v hlavičce
-function updateHeaderTimer(timeString) {
-    const headerTimerTime = document.getElementById('header-timer-time');
-    if (headerTimerTime) {
-        headerTimerTime.textContent = timeString;
-    }
+// Aktualizace informací o časovači
+function updateTimerInfo() {
+    // Informace o osobě a úkolu v hlavním časovači
+    const personName = timerState.person.charAt(0).toUpperCase() + timerState.person.slice(1);
+    const activityName = document.getElementById('timer-activity').value;
+
+    document.getElementById('timer-person').textContent = personName;
+    document.getElementById('timer-activity-display').textContent = activityName || '';
+
+    // Informace o osobě a úkolu v hlavičce
+    document.getElementById('header-timer-person').textContent = personName;
+    document.getElementById('header-timer-activity').textContent = activityName || '';
 }
 
-// Aktualizace viditelnosti časovače v hlavičce
-function updateHeaderTimerVisibility(visible) {
-    const headerTimer = document.getElementById('header-timer');
-    if (headerTimer) {
-        if (visible) {
-            headerTimer.classList.remove('hidden');
-        } else {
-            headerTimer.classList.add('hidden');
-        }
-    }
-}
-
-// Reset časovače do výchozího stavu
+// Resetování časovače
 function resetTimer() {
-    // Vyčištění stavu časovače
+    // Zastavení časovače
+    clearInterval(timerState.timerInterval);
+
+    // Resetování stavu časovače
     timerState.running = false;
     timerState.startTime = null;
     timerState.pausedTime = 0;
-    clearInterval(timerState.timerInterval);
-    
-    // Reset UI
+
+    // Aktualizace zobrazení
     updateTimerDisplay('00:00:00');
+    document.getElementById('timer-earnings').textContent = '';
+
+    // Aktualizace stavu tlačítek
     document.getElementById('timer-start').disabled = false;
     document.getElementById('timer-pause').disabled = true;
     document.getElementById('timer-stop').disabled = true;
-    document.getElementById('timer-earnings').textContent = '';
-    
+
     // Skrytí časovače v hlavičce
-    updateHeaderTimerVisibility(false);
+    document.getElementById('header-timer').classList.add('hidden');
 }
 
-// Uložení pracovního záznamu do úložiště
+// Uložení záznamu o práci
 function saveWorkLog(workLog) {
     try {
-        APP_DATA.workLogs.push(workLog);
-        localStorage.setItem('workLogs', JSON.stringify(APP_DATA.workLogs));
+        const workLogs = JSON.parse(localStorage.getItem('workLogs')) || [];
+        workLogs.push(workLog);
+        localStorage.setItem('workLogs', JSON.stringify(workLogs));
+
+        // Aktualizace přehledů
+        if (document.getElementById('work-logs-accordion')) {
+            loadWorkLogs();
+        }
     } catch (error) {
-        console.error('Chyba při ukládání pracovního záznamu:', error);
-        alert('Nastala chyba při ukládání záznamu.');
+        console.error('Chyba při ukládání záznamu o práci:', error);
     }
 }
 
-// Generování unikátního ID
-function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-}
-
-// Inicializace formuláře ručního zadání
+// ===== RUČNÍ ZADÁNÍ ZÁZNAMU =====
 function initManualEntryForm() {
     const manualEntryForm = document.getElementById('manual-entry-form');
-    
+    const cancelEditButton = document.getElementById('cancel-edit-button');
+
     if (manualEntryForm) {
         manualEntryForm.addEventListener('submit', function(e) {
             e.preventDefault();
-            
+
+            // Kontrola, zda je vybrán úkol
+            if (!document.getElementById('manual-activity').value) {
+                alert('Vyberte prosím úkol.');
+                return;
+            }
+
             // Získání hodnot z formuláře
-            const id = document.getElementById('edit-log-id').value;
+            const id = document.getElementById('edit-log-id').value || generateId();
             const person = document.getElementById('manual-person').value;
             const date = document.getElementById('manual-date').value;
             const startTime = document.getElementById('manual-start-time').value;
@@ -499,128 +617,124 @@ function initManualEntryForm() {
             const breakTime = parseInt(document.getElementById('manual-break-time').value) || 0;
             const activity = document.getElementById('manual-activity').value;
             const note = document.getElementById('manual-note').value;
-            
-            // Validace
-            if (!date || !startTime || !endTime) {
-                alert('Prosím, vyplňte všechna povinná pole (datum, začátek, konec).');
-                return;
-            }
-            
-            if (!activity) {
-                alert('Prosím, vyberte úkol.');
-                return;
-            }
-            
-            // Vytvoření objektů Date
+
+            // Vytvoření objektů Date pro začátek a konec
             const startDate = new Date(`${date}T${startTime}`);
             const endDate = new Date(`${date}T${endTime}`);
-            
+
             // Kontrola, zda je konec po začátku
             if (endDate <= startDate) {
-                alert('Čas konce musí být pozdější než čas začátku.');
+                alert('Konec musí být po začátku.');
                 return;
             }
-            
-            // Výpočet trvání v milisekundách (mínus přestávka)
-            const durationMs = endDate - startDate - (breakTime * 60 * 1000);
-            
+
+            // Výpočet trvání v milisekundách (s odečtením pauzy)
+            const durationMs = endDate.getTime() - startDate.getTime() - (breakTime * 60 * 1000);
+
             if (durationMs <= 0) {
-                alert('Doba práce po odečtení přestávky musí být větší než 0.');
+                alert('Celková doba práce (po odečtení pauzy) musí být větší než 0.');
                 return;
             }
-            
+
             // Výpočet výdělku
             const durationHours = durationMs / (1000 * 60 * 60);
-            const rate = timerState.rates[person];
+            const rate = RATES[person];
             const earnings = durationHours * rate;
-            
-            // Vytvoření/aktualizace záznamu
+
+            // Vytvoření záznamu o práci
             const workLog = {
-                id: id || generateId(),
+                id: id,
                 person: person,
                 activity: activity,
                 note: note,
                 startTime: startDate.toISOString(),
                 endTime: endDate.toISOString(),
+                breakTime: breakTime,
                 duration: durationMs,
-                earnings: Math.round(earnings),
-                breakTime: breakTime
+                earnings: Math.round(earnings)
             };
-            
-            // Uložení záznamu
-            if (id) {
+
+            // Uložení nebo aktualizace záznamu
+            if (document.getElementById('edit-log-id').value) {
                 // Editace existujícího záznamu
-                const index = APP_DATA.workLogs.findIndex(log => log.id === id);
-                if (index !== -1) {
-                    APP_DATA.workLogs[index] = workLog;
-                }
+                updateWorkLog(workLog);
+                alert('Záznam byl upraven.');
             } else {
-                // Přidání nového záznamu
-                APP_DATA.workLogs.push(workLog);
+                // Nový záznam
+                saveWorkLog(workLog);
+                alert(`Záznam byl uložen. Výdělek: ${Math.round(earnings)} Kč.`);
             }
-            
-            // Uložení do úložiště
-            localStorage.setItem('workLogs', JSON.stringify(APP_DATA.workLogs));
-            
-            // Reset formuláře
+
+            // Resetování formuláře
             manualEntryForm.reset();
             document.getElementById('edit-log-id').value = '';
             document.getElementById('save-log-button').innerHTML = '<i class="fas fa-plus"></i> Přidat záznam';
             document.getElementById('cancel-edit-button').style.display = 'none';
-            
-            // Obnovení zobrazení záznamů
-            displayWorkLogs();
-            displayDeductions();
-            
-            // Nastavení aktuálního data
-            setCurrentDateToForms();
-            
-            // Oznámení uživateli
-            alert('Záznam byl úspěšně uložen.');
+
+            // Nastavení dnešního data
+            setTodaysDate();
         });
-        
-        // Tlačítko pro zrušení úpravy
-        const cancelEditButton = document.getElementById('cancel-edit-button');
-        if (cancelEditButton) {
-            cancelEditButton.addEventListener('click', function() {
-                manualEntryForm.reset();
-                document.getElementById('edit-log-id').value = '';
-                document.getElementById('save-log-button').innerHTML = '<i class="fas fa-plus"></i> Přidat záznam';
-                cancelEditButton.style.display = 'none';
-                
-                // Nastavení aktuálního data
-                setCurrentDateToForms();
-            });
-        }
+    }
+
+    // Tlačítko pro zrušení úpravy
+    if (cancelEditButton) {
+        cancelEditButton.addEventListener('click', function() {
+            manualEntryForm.reset();
+            document.getElementById('edit-log-id').value = '';
+            document.getElementById('save-log-button').innerHTML = '<i class="fas fa-plus"></i> Přidat záznam';
+            document.getElementById('cancel-edit-button').style.display = 'none';
+            setTodaysDate();
+        });
     }
 }
 
-// Inicializace formuláře financí
+// Aktualizace záznamu o práci
+function updateWorkLog(workLog) {
+    try {
+        const workLogs = JSON.parse(localStorage.getItem('workLogs')) || [];
+        const index = workLogs.findIndex(log => log.id === workLog.id);
+
+        if (index !== -1) {
+            workLogs[index] = workLog;
+            localStorage.setItem('workLogs', JSON.stringify(workLogs));
+
+            // Aktualizace přehledů
+            if (document.getElementById('work-logs-accordion')) {
+                loadWorkLogs();
+            }
+        }
+    } catch (error) {
+        console.error('Chyba při aktualizaci záznamu o práci:', error);
+    }
+}
+
+// ===== FINANCE =====
 function initFinanceForm() {
     const financeForm = document.getElementById('finance-form');
-    
+    const cancelFinanceEditButton = document.getElementById('cancel-finance-edit-button');
+
     if (financeForm) {
         financeForm.addEventListener('submit', function(e) {
             e.preventDefault();
-            
+
             // Získání hodnot z formuláře
-            const id = document.getElementById('edit-finance-id').value;
+            const id = document.getElementById('edit-finance-id').value || generateId();
             const type = document.getElementById('finance-type').value;
             const date = document.getElementById('finance-date').value;
             const description = document.getElementById('finance-description').value;
             const category = document.getElementById('finance-category').value;
             const amount = parseFloat(document.getElementById('finance-amount').value);
             const currency = document.getElementById('finance-currency').value;
-            
-            // Validace
-            if (!date || !description || isNaN(amount) || amount <= 0) {
-                alert('Prosím, vyplňte všechna povinná pole a zadejte platnou částku.');
+
+            // Kontrola platnosti částky
+            if (isNaN(amount) || amount <= 0) {
+                alert('Zadejte platnou částku větší než 0.');
                 return;
             }
-            
-            // Vytvoření/aktualizace záznamu
+
+            // Vytvoření finančního záznamu
             const financeRecord = {
-                id: id || generateId(),
+                id: id,
                 type: type,
                 date: date,
                 description: description,
@@ -628,1700 +742,1650 @@ function initFinanceForm() {
                 amount: amount,
                 currency: currency
             };
-            
-            // Uložení záznamu
-            if (id) {
+
+            // Uložení nebo aktualizace záznamu
+            if (document.getElementById('edit-finance-id').value) {
                 // Editace existujícího záznamu
-                const index = APP_DATA.financeRecords.findIndex(record => record.id === id);
-                if (index !== -1) {
-                    APP_DATA.financeRecords[index] = financeRecord;
-                }
+                updateFinanceRecord(financeRecord);
+                alert('Finanční záznam byl upraven.');
             } else {
-                // Přidání nového záznamu
-                APP_DATA.financeRecords.push(financeRecord);
+                // Nový záznam
+                saveFinanceRecord(financeRecord);
+                alert('Finanční záznam byl uložen.');
             }
-            
-            // Uložení do úložiště
-            localStorage.setItem('financeRecords', JSON.stringify(APP_DATA.financeRecords));
-            
-            // Reset formuláře
+
+            // Resetování formuláře
             financeForm.reset();
             document.getElementById('edit-finance-id').value = '';
             document.getElementById('save-finance-button').innerHTML = '<i class="fas fa-plus"></i> Přidat';
             document.getElementById('cancel-finance-edit-button').style.display = 'none';
-            
-            // Obnovení zobrazení záznamů
-            displayFinanceRecords();
-            
-            // Nastavení aktuálního data
-            setCurrentDateToForms();
-            
-            // Oznámení uživateli
-            alert('Finanční záznam byl úspěšně uložen.');
+
+            // Nastavení dnešního data
+            setTodaysDate();
+
+            // Načtení finančních záznamů
+            loadFinanceRecords();
         });
-        
-        // Tlačítko pro zrušení úpravy
-        const cancelEditButton = document.getElementById('cancel-finance-edit-button');
-        if (cancelEditButton) {
-            cancelEditButton.addEventListener('click', function() {
-                financeForm.reset();
-                document.getElementById('edit-finance-id').value = '';
-                document.getElementById('save-finance-button').innerHTML = '<i class="fas fa-plus"></i> Přidat';
-                cancelEditButton.style.display = 'none';
-                
-                // Nastavení aktuálního data
-                setCurrentDateToForms();
-            });
+    }
+
+    // Tlačítko pro zrušení úpravy
+    if (cancelFinanceEditButton) {
+        cancelFinanceEditButton.addEventListener('click', function() {
+            financeForm.reset();
+            document.getElementById('edit-finance-id').value = '';
+            document.getElementById('save-finance-button').innerHTML = '<i class="fas fa-plus"></i> Přidat';
+            document.getElementById('cancel-finance-edit-button').style.display = 'none';
+            setTodaysDate();
+        });
+    }
+
+    // Načtení finančních záznamů při zobrazení sekce
+    const financeLink = document.querySelector('a[data-section="finance"]');
+    if (financeLink) {
+        financeLink.addEventListener('click', loadFinanceRecords);
+    }
+
+    // Načtení finančních záznamů při načtení stránky
+    loadFinanceRecords();
+}
+
+// Uložení finančního záznamu
+function saveFinanceRecord(record) {
+    try {
+        const financeRecords = JSON.parse(localStorage.getItem('financeRecords')) || [];
+        financeRecords.push(record);
+        localStorage.setItem('financeRecords', JSON.stringify(financeRecords));
+    } catch (error) {
+        console.error('Chyba při ukládání finančního záznamu:', error);
+    }
+}
+
+// Aktualizace finančního záznamu
+function updateFinanceRecord(record) {
+    try {
+        const financeRecords = JSON.parse(localStorage.getItem('financeRecords')) || [];
+        const index = financeRecords.findIndex(r => r.id === record.id);
+
+        if (index !== -1) {
+            financeRecords[index] = record;
+            localStorage.setItem('financeRecords', JSON.stringify(financeRecords));
+        }
+    } catch (error) {
+        console.error('Chyba při aktualizaci finančního záznamu:', error);
+    }
+}
+
+// Načtení finančních záznamů
+function loadFinanceRecords() {
+    const financeTable = document.getElementById('finance-table');
+
+    if (!financeTable) return;
+
+    try {
+        const financeRecords = JSON.parse(localStorage.getItem('financeRecords')) || [];
+
+        if (financeRecords.length === 0) {
+            financeTable.innerHTML = '<tr><td colspan="7" class="text-center empty-placeholder">Žádné finanční záznamy.</td></tr>';
+            return;
+        }
+
+        // Seřazení záznamů podle data (nejnovější první)
+        financeRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        // Vytvoření HTML pro záznamy
+        const html = financeRecords.map(record => {
+            // Formátování data
+            const date = new Date(record.date).toLocaleDateString('cs-CZ');
+
+            // Formátování typu
+            const typeText = record.type === 'income' ? 'Příjem' : 'Výdaj';
+            const typeClass = record.type === 'income' ? 'success-color' : 'danger-color';
+
+            return `
+                <tr>
+                    <td class="${typeClass}">${typeText}</td>
+                    <td>${record.description}</td>
+                    <td>${record.amount.toFixed(2)}</td>
+                    <td>${record.currency}</td>
+                    <td>${date}</td>
+                    <td>${record.category || '-'}</td>
+                    <td>
+                        <button class="edit-finance-button" data-id="${record.id}">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="delete-finance-button" data-id="${record.id}">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        financeTable.innerHTML = html;
+
+        // Přidání posluchačů událostí pro tlačítka úpravy a smazání
+        financeTable.querySelectorAll('.edit-finance-button').forEach(button => {
+            button.addEventListener('click', editFinanceRecord);
+        });
+
+        financeTable.querySelectorAll('.delete-finance-button').forEach(button => {
+            button.addEventListener('click', deleteFinanceRecord);
+        });
+    } catch (error) {
+        console.error('Chyba při načítání finančních záznamů:', error);
+    }
+}
+
+// Úprava finančního záznamu
+function editFinanceRecord() {
+    const recordId = this.getAttribute('data-id');
+
+    try {
+        const financeRecords = JSON.parse(localStorage.getItem('financeRecords')) || [];
+        const record = financeRecords.find(r => r.id === recordId);
+
+        if (record) {
+            // Naplnění formuláře daty
+            document.getElementById('edit-finance-id').value = record.id;
+            document.getElementById('finance-type').value = record.type;
+            document.getElementById('finance-date').value = record.date;
+            document.getElementById('finance-description').value = record.description;
+            document.getElementById('finance-category').value = record.category || '';
+            document.getElementById('finance-amount').value = record.amount;
+            document.getElementById('finance-currency').value = record.currency;
+
+            // Změna textu tlačítka a zobrazení tlačítka pro zrušení
+            document.getElementById('save-finance-button').innerHTML = '<i class="fas fa-save"></i> Uložit změny';
+            document.getElementById('cancel-finance-edit-button').style.display = 'inline-block';
+
+            // Posun na formulář
+            document.getElementById('finance-form').scrollIntoView({ behavior: 'smooth' });
+        }
+    } catch (error) {
+        console.error('Chyba při úpravě finančního záznamu:', error);
+    }
+}
+
+// Smazání finančního záznamu
+function deleteFinanceRecord() {
+    const recordId = this.getAttribute('data-id');
+
+    if (confirm('Opravdu chcete smazat tento finanční záznam?')) {
+        try {
+            const financeRecords = JSON.parse(localStorage.getItem('financeRecords')) || [];
+            const updatedRecords = financeRecords.filter(r => r.id !== recordId);
+            localStorage.setItem('financeRecords', JSON.stringify(updatedRecords));
+
+            // Aktualizace zobrazení
+            loadFinanceRecords();
+        } catch (error) {
+            console.error('Chyba při mazání finančního záznamu:', error);
         }
     }
 }
 
-// Inicializace formulářů dluhů
-function initDebtForms() {
-    // Formulář dluhu
+// ===== SPRÁVA DLUHŮ =====
+function initDebtManagement() {
     const debtForm = document.getElementById('debt-form');
-    
+    const paymentForm = document.getElementById('payment-form');
+    const cancelDebtEditButton = document.getElementById('cancel-debt-edit-button');
+
+    // Inicializace formuláře pro dluh
     if (debtForm) {
         debtForm.addEventListener('submit', function(e) {
             e.preventDefault();
-            
+
             // Získání hodnot z formuláře
-            const id = document.getElementById('edit-debt-id').value;
+            const id = document.getElementById('edit-debt-id').value || generateId();
             const person = document.getElementById('debt-person').value;
             const description = document.getElementById('debt-description').value;
-            const amount = parseFloat(document.getElementById('debt-amount').value);
+            const amount = parseFloat(document.getElementById('debt-amount).value);
             const currency = document.getElementById('debt-currency').value;
             const date = document.getElementById('debt-date').value;
-            const dueDate = document.getElementById('debt-due-date').value;
-            
-            // Validace
-            if (!description || isNaN(amount) || amount <= 0 || !date) {
-                alert('Prosím, vyplňte všechna povinná pole a zadejte platnou částku.');
+            const dueDate = document.getElementById('debt-due-date').value || null;
+
+            // Kontrola platnosti částky
+            if (isNaN(amount) || amount <= 0) {
+                alert('Zadejte platnou částku větší než 0.');
                 return;
             }
-            
-            // Vytvoření/aktualizace záznamu
+
+            // Vytvoření záznamu o dluhu
             const debt = {
-                id: id || generateId(),
+                id: id,
                 person: person,
                 description: description,
                 amount: amount,
                 currency: currency,
                 date: date,
                 dueDate: dueDate,
-                remaining: amount // Počáteční zbývající částka je celková částka
+                createdAt: new Date().toISOString()
             };
-            
-            // Uložení záznamu
-            if (id) {
+
+            // Uložení nebo aktualizace záznamu
+            if (document.getElementById('edit-debt-id').value) {
                 // Editace existujícího záznamu
-                const index = APP_DATA.debts.findIndex(d => d.id === id);
-                if (index !== -1) {
-                    // Zachovat zbývající částku (je aktualizována při splátkách)
-                    debt.remaining = APP_DATA.debts[index].remaining;
-                    APP_DATA.debts[index] = debt;
-                }
+                updateDebt(debt);
+                alert('Dluh byl upraven.');
             } else {
-                // Přidání nového záznamu
-                APP_DATA.debts.push(debt);
+                // Nový záznam
+                saveDebt(debt);
+                alert('Dluh byl uložen.');
             }
-            
-            // Uložení do úložiště
-            localStorage.setItem('debts', JSON.stringify(APP_DATA.debts));
-            
-            // Reset formuláře
+
+            // Resetování formuláře
             debtForm.reset();
             document.getElementById('edit-debt-id').value = '';
             document.getElementById('save-debt-button').innerHTML = '<i class="fas fa-plus"></i> Přidat dluh';
             document.getElementById('cancel-debt-edit-button').style.display = 'none';
-            
-            // Obnovení zobrazení dluhů
-            displayDebts();
-            updateDebtOptions();
-            
-            // Nastavení aktuálního data
-            setCurrentDateToForms();
-            
-            // Oznámení uživateli
-            alert('Dluh byl úspěšně uložen.');
+
+            // Nastavení dnešního data
+            setTodaysDate();
+
+            // Načtení dluhů
+            loadDebts();
+
+            // Aktualizace select elementu pro splátky
+            loadDebtsForPaymentForm();
         });
-        
-        // Tlačítko pro zrušení úpravy
-        const cancelEditButton = document.getElementById('cancel-debt-edit-button');
-        if (cancelEditButton) {
-            cancelEditButton.addEventListener('click', function() {
-                debtForm.reset();
-                document.getElementById('edit-debt-id').value = '';
-                document.getElementById('save-debt-button').innerHTML = '<i class="fas fa-plus"></i> Přidat dluh';
-                cancelEditButton.style.display = 'none';
-                
-                // Nastavení aktuálního data
-                setCurrentDateToForms();
-            });
-        }
     }
-    
-    // Formulář splátky
-    const paymentForm = document.getElementById('payment-form');
-    
+
+    // Tlačítko pro zrušení úpravy dluhu
+    if (cancelDebtEditButton) {
+        cancelDebtEditButton.addEventListener('click', function() {
+            debtForm.reset();
+            document.getElementById('edit-debt-id').value = '';
+            document.getElementById('save-debt-button').innerHTML = '<i class="fas fa-plus"></i> Přidat dluh';
+            document.getElementById('cancel-debt-edit-button').style.display = 'none';
+            setTodaysDate();
+        });
+    }
+
+    // Inicializace formuláře pro splátku
     if (paymentForm) {
         paymentForm.addEventListener('submit', function(e) {
             e.preventDefault();
-            
+
             // Získání hodnot z formuláře
             const debtId = document.getElementById('payment-debt-id').value;
             const amount = parseFloat(document.getElementById('payment-amount').value);
             const date = document.getElementById('payment-date').value;
             const note = document.getElementById('payment-note').value;
-            
-            // Validace
-            if (!debtId || isNaN(amount) || amount <= 0 || !date) {
-                alert('Prosím, vyplňte všechna povinná pole a zadejte platnou částku.');
+
+            // Kontrola, zda je vybrán dluh
+            if (!debtId) {
+                alert('Vyberte prosím dluh pro splátku.');
                 return;
             }
-            
-            // Najít dluh
-            const debtIndex = APP_DATA.debts.findIndex(d => d.id === debtId);
-            if (debtIndex === -1) {
-                alert('Vybraný dluh nebyl nalezen.');
+
+            // Kontrola platnosti částky
+            if (isNaN(amount) || amount <= 0) {
+                alert('Zadejte platnou částku větší než 0.');
                 return;
             }
-            
-            const debt = APP_DATA.debts[debtIndex];
-            
-            // Kontrola, zda splátka není větší než zbývající dluh
-            if (amount > debt.remaining) {
-                alert(`Částka splátky (${amount} ${debt.currency}) nemůže být větší než zbývající dluh (${debt.remaining} ${debt.currency}).`);
-                return;
+
+            // Kontrola, zda splátka nepřevyšuje zbývající částku dluhu
+            const debts = JSON.parse(localStorage.getItem('debts')) || [];
+            const debt = debts.find(d => d.id === debtId);
+
+            if (debt) {
+                const payments = JSON.parse(localStorage.getItem('debtPayments')) || [];
+                const debtPayments = payments.filter(p => p.debtId === debtId);
+                const totalPaid = debtPayments.reduce((sum, p) => sum + p.amount, 0);
+                const remaining = debt.amount - totalPaid;
+
+                if (amount > remaining) {
+                    alert(`Splátka nemůže být vyšší než zbývající částka dluhu (${remaining.toFixed(2)} ${debt.currency}).`);
+                    return;
+                }
             }
-            
-            // Vytvoření záznamu splátky
+
+            // Vytvoření záznamu o splátce
             const payment = {
                 id: generateId(),
                 debtId: debtId,
                 amount: amount,
                 date: date,
-                note: note
+                note: note,
+                createdAt: new Date().toISOString()
             };
-            
-            // Přidání záznamu
-            APP_DATA.debtPayments.push(payment);
-            
-            // Aktualizace zbývající částky dluhu
-            debt.remaining -= amount;
-            
-            // Uložení do úložiště
-            localStorage.setItem('debtPayments', JSON.stringify(APP_DATA.debtPayments));
-            localStorage.setItem('debts', JSON.stringify(APP_DATA.debts));
-            
-            // Reset formuláře
+
+            // Uložení splátky
+            savePayment(payment);
+
+            // Resetování formuláře
             paymentForm.reset();
-            
-            // Obnovení zobrazení dluhů
-            displayDebts();
-            
-            // Nastavení aktuálního data
-            setCurrentDateToForms();
-            
-            // Oznámení uživateli
-            alert('Splátka byla úspěšně uložena.');
+
+            // Nastavení dnešního data
+            setTodaysDate();
+
+            // Načtení dluhů
+            loadDebts();
+
+            // Aktualizace select elementu pro splátky
+            loadDebtsForPaymentForm();
+
+            alert('Splátka byla uložena.');
         });
+    }
+
+    // Načtení dluhů při zobrazení sekce
+    const srazkyLink = document.querySelector('a[data-section="srazky"]');
+    if (srazkyLink) {
+        srazkyLink.addEventListener('click', function() {
+            loadDebts();
+            loadDeductionsSummary();
+        });
+    }
+
+    // Načtení dluhů při načtení stránky
+    loadDebts();
+    loadDeductionsSummary();
+}
+
+// Uložení dluhu
+function saveDebt(debt) {
+    try {
+        const debts = JSON.parse(localStorage.getItem('debts')) || [];
+        debts.push(debt);
+        localStorage.setItem('debts', JSON.stringify(debts));
+    } catch (error) {
+        console.error('Chyba při ukládání dluhu:', error);
     }
 }
 
-// Aktualizace možností dluhů pro splátky
-function updateDebtOptions() {
-    const paymentDebtSelect = document.getElementById('payment-debt-id');
-    
-    if (paymentDebtSelect) {
-        // Odstranění všech možností kromě první (placeholder)
-        while (paymentDebtSelect.options.length > 1) {
-            paymentDebtSelect.remove(1);
+// Aktualizace dluhu
+function updateDebt(debt) {
+    try {
+        const debts = JSON.parse(localStorage.getItem('debts')) || [];
+        const index = debts.findIndex(d => d.id === debt.id);
+
+        if (index !== -1) {
+            debts[index] = debt;
+            localStorage.setItem('debts', JSON.stringify(debts));
         }
-        
-        // Přidání možností pouze pro dluhy, které ještě nejsou splacené
-        APP_DATA.debts.forEach(debt => {
-            if (debt.remaining > 0) {
-                const personName = debt.person.charAt(0).toUpperCase() + debt.person.slice(1);
-                const option = document.createElement('option');
-                option.value = debt.id;
-                option.textContent = `${personName}: ${debt.description} (${debt.remaining} ${debt.currency})`;
-                paymentDebtSelect.appendChild(option);
-            }
-        });
+    } catch (error) {
+        console.error('Chyba při aktualizaci dluhu:', error);
     }
 }
 
-// Inicializace filtrů
-function initFilters() {
-    const applyFiltersBtn = document.getElementById('apply-filters');
-    const resetFiltersBtn = document.getElementById('reset-filters');
-    
-    if (applyFiltersBtn) {
-        applyFiltersBtn.addEventListener('click', function() {
-            displayWorkLogs();
-            updateCharts();
-        });
-    }
-    
-    if (resetFiltersBtn) {
-        resetFiltersBtn.addEventListener('click', function() {
-            document.getElementById('filter-person').value = '';
-            document.getElementById('filter-activity').value = '';
-            document.getElementById('filter-start-date').value = '';
-            document.getElementById('filter-end-date').value = '';
-            
-            displayWorkLogs();
-            updateCharts();
-        });
-    }
-    
-    // Posluchači pro typ grafu
-    const chartTypeButtons = document.querySelectorAll('.chart-options button');
-    chartTypeButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            chartTypeButtons.forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            updateCharts();
-        });
-    });
-}
-
-// Inicializace grafů
-function initCharts() {
-    // Při prvním načtení zobrazíme výchozí graf
-    updateCharts();
-}
-
-// Aktualizace grafů
-function updateCharts() {
-    // Získání filtrovaných dat
-    const filteredLogs = getFilteredWorkLogs();
-    
-    // Kontrola, zda jsou data k dispozici
-    if (filteredLogs.length === 0) {
-        document.getElementById('chart-area').style.display = 'none';
-        document.getElementById('chart-no-data').style.display = 'block';
-        return;
-    }
-    
-    document.getElementById('chart-area').style.display = 'block';
-    document.getElementById('chart-no-data').style.display = 'none';
-    
-    // Získání typu grafu
-    const activeChartButton = document.querySelector('.chart-options button.active');
-    const chartType = activeChartButton ? activeChartButton.getAttribute('data-chart-type') : 'person';
-    
-    // Příprava dat pro graf
-    let chartData;
-    let chartLabels;
-    
-    if (chartType === 'person') {
-        // Graf podle osoby
-        const personData = {};
-        
-        filteredLogs.forEach(log => {
-            if (!personData[log.person]) {
-                personData[log.person] = 0;
-            }
-            personData[log.person] += log.duration / (1000 * 60 * 60); // Převod na hodiny
-        });
-        
-        chartLabels = Object.keys(personData).map(person => person.charAt(0).toUpperCase() + person.slice(1));
-        chartData = Object.values(personData);
-        
-    } else if (chartType === 'activity') {
-        // Graf podle úkolu
-        const activityData = {};
-        
-        filteredLogs.forEach(log => {
-            if (!activityData[log.activity]) {
-                activityData[log.activity] = 0;
-            }
-            activityData[log.activity] += log.duration / (1000 * 60 * 60); // Převod na hodiny
-        });
-        
-        chartLabels = Object.keys(activityData);
-        chartData = Object.values(activityData);
-        
-    } else if (chartType === 'month') {
-        // Graf podle měsíce
-        const monthData = {};
-        
-        filteredLogs.forEach(log => {
-            const date = new Date(log.startTime);
-            const monthYear = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
-            
-            if (!monthData[monthYear]) {
-                monthData[monthYear] = 0;
-            }
-            monthData[monthYear] += log.duration / (1000 * 60 * 60); // Převod na hodiny
-        });
-        
-        // Seřazení měsíců chronologicky
-        const sortedMonths = Object.keys(monthData).sort();
-        
-        // Formátování popisků měsíců
-        chartLabels = sortedMonths.map(monthYear => {
-            const [year, month] = monthYear.split('-');
-            const monthNames = [
-                'Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen',
-                'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'
-            ];
-            return `${monthNames[parseInt(month) - 1]} ${year}`;
-        });
-        
-        chartData = sortedMonths.map(month => monthData[month]);
-    }
-    
-    // Získání kontextu plátna
-    const ctx = document.getElementById('chart-area').getContext('2d');
-    
-    // Zničení starého grafu, pokud existuje
-    if (window.workChart) {
-        window.workChart.destroy();
-    }
-    
-    // Barvy
-    const backgroundColors = [
-        'rgba(54, 162, 235, 0.6)',
-        'rgba(255, 99, 132, 0.6)',
-        'rgba(255, 206, 86, 0.6)',
-        'rgba(75, 192, 192, 0.6)',
-        'rgba(153, 102, 255, 0.6)',
-        'rgba(255, 159, 64, 0.6)',
-        'rgba(199, 199, 199, 0.6)'
-    ];
-    
-    // Vytvoření nového grafu
-    window.workChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: chartLabels,
-            datasets: [{
-                label: 'Odpracováno hodin',
-                data: chartData.map(hours => Math.round(hours * 100) / 100), // Zaokrouhlení na 2 desetinná místa
-                backgroundColor: backgroundColors.slice(0, chartLabels.length),
-                borderColor: backgroundColors.map(color => color.replace('0.6', '1')),
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Hodiny'
-                    }
-                }
-            },
-            plugins: {
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            const hours = parseFloat(context.raw);
-                            return `${hours.toFixed(2)} h`;
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-// Inicializace exportů
-function initExports() {
-    // Export pracovních záznamů
-    const exportWorkLogsBtn = document.getElementById('export-work-logs');
-    if (exportWorkLogsBtn) {
-        exportWorkLogsBtn.addEventListener('click', function() {
-            exportWorkLogsToCSV();
-        });
-    }
-    
-    // Export finančních záznamů
-    const exportFinanceBtn = document.getElementById('export-finance');
-    if (exportFinanceBtn) {
-        exportFinanceBtn.addEventListener('click', function() {
-            exportFinanceToCSV();
-        });
-    }
-    
-    // Export srážek
-    const exportDeductionsBtn = document.getElementById('export-deductions');
-    if (exportDeductionsBtn) {
-        exportDeductionsBtn.addEventListener('click', function() {
-            exportDeductionsToCSV();
-        });
-    }
-    
-    // Export dluhů
-    const exportDebtsBtn = document.getElementById('export-debts');
-    if (exportDebtsBtn) {
-        exportDebtsBtn.addEventListener('click', function() {
-            exportDebtsToCSV();
-        });
-    }
-    
-    // Záloha dat
-    const backupDataBtn = document.getElementById('backup-data');
-    if (backupDataBtn) {
-        backupDataBtn.addEventListener('click', function() {
-            backupData();
-        });
-    }
-    
-    // Obnovení dat
-    const importDataInput = document.getElementById('import-data-input');
-    if (importDataInput) {
-        importDataInput.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                restoreData(file);
-            }
-        });
-    }
-    
-    // Smazání všech dat
-    const clearAllDataBtn = document.getElementById('clear-all-data');
-    if (clearAllDataBtn) {
-        clearAllDataBtn.addEventListener('click', function() {
-            if (confirm('POZOR: Tato akce smaže všechna data aplikace. Pokračovat?')) {
-                clearAllData();
-            }
-        });
+// Uložení splátky
+function savePayment(payment) {
+    try {
+        const payments = JSON.parse(localStorage.getItem('debtPayments')) || [];
+        payments.push(payment);
+        localStorage.setItem('debtPayments', JSON.stringify(payments));
+    } catch (error) {
+        console.error('Chyba při ukládání splátky:', error);
     }
 }
 
-// Export pracovních záznamů do CSV
-function exportWorkLogsToCSV() {
-    // Získání filtrovaných záznamů
-    const filteredLogs = getFilteredWorkLogs();
-    
-    if (filteredLogs.length === 0) {
-        alert('Žádné záznamy k exportu.');
-        return;
-    }
-    
-    // Hlavička CSV
-    let csvContent = 'ID,Osoba,Úkol,Poznámka,Začátek,Konec,Doba (h),Výdělek (Kč)\n';
-    
-    // Přidání řádků
-    filteredLogs.forEach(log => {
-        const startDate = new Date(log.startTime);
-        const endDate = new Date(log.endTime);
-        const durationHours = log.duration / (1000 * 60 * 60);
-        
-        const row = [
-            log.id,
-            log.person,
-            log.activity,
-            log.note || '',
-            formatDateTime(startDate),
-            formatDateTime(endDate),
-            (Math.round(durationHours * 100) / 100).toString().replace('.', ','),
-            log.earnings
-        ];
-        
-        // Escapování textových hodnot
-        const escapedRow = row.map(value => {
-            if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
-                return `"${value.replace(/"/g, '""')}"`;
-            }
-            return value;
-        });
-        
-        csvContent += escapedRow.join(',') + '\n';
-    });
-    
-    // Vytvoření a stažení souboru
-    downloadCSV(csvContent, 'pracovni-zaznamy.csv');
-}
-
-// Export finančních záznamů do CSV
-function exportFinanceToCSV() {
-    if (APP_DATA.financeRecords.length === 0) {
-        alert('Žádné finanční záznamy k exportu.');
-        return;
-    }
-    
-    // Hlavička CSV
-    let csvContent = 'ID,Typ,Popis,Částka,Měna,Datum,Kategorie\n';
-    
-    // Přidání řádků
-    APP_DATA.financeRecords.forEach(record => {
-        const type = record.type === 'income' ? 'Příjem' : 'Výdaj';
-        
-        const row = [
-            record.id,
-            type,
-            record.description,
-            record.amount.toString().replace('.', ','),
-            record.currency,
-            record.date,
-            record.category || ''
-        ];
-        
-        // Escapování textových hodnot
-        const escapedRow = row.map(value => {
-            if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
-                return `"${value.replace(/"/g, '""')}"`;
-            }
-            return value;
-        });
-        
-        csvContent += escapedRow.join(',') + '\n';
-    });
-    
-    // Vytvoření a stažení souboru
-    downloadCSV(csvContent, 'financni-zaznamy.csv');
-}
-
-// Export srážek do CSV
-function exportDeductionsToCSV() {
-    // Získání dat srážek
-    const deductionsData = calculateDeductions();
-    
-    if (deductionsData.length === 0) {
-        alert('Žádné srážky k exportu.');
-        return;
-    }
-    
-    // Hlavička CSV
-    let csvContent = 'Osoba,Měsíc,Celkem odpracováno (h),Hrubý výdělek (Kč),Srážka (Kč)\n';
-    
-    // Přidání řádků
-    deductionsData.forEach(deduction => {
-        const row = [
-            deduction.person,
-            deduction.month,
-            deduction.hoursWorked.toString().replace('.', ','),
-            deduction.grossEarnings,
-            deduction.deduction
-        ];
-        
-        csvContent += row.join(',') + '\n';
-    });
-    
-    // Vytvoření a stažení souboru
-    downloadCSV(csvContent, 'srazky.csv');
-}
-
-// Export dluhů do CSV
-function exportDebtsToCSV() {
-    if (APP_DATA.debts.length === 0) {
-        alert('Žádné dluhy k exportu.');
-        return;
-    }
-    
-    // Hlavička CSV
-    let csvContent = 'ID,Osoba,Popis,Celková částka,Zbývající částka,Měna,Datum vzniku,Datum splatnosti\n';
-    
-    // Přidání řádků
-    APP_DATA.debts.forEach(debt => {
-        const row = [
-            debt.id,
-            debt.person,
-            debt.description,
-            debt.amount.toString().replace('.', ','),
-            debt.remaining.toString().replace('.', ','),
-            debt.currency,
-            debt.date,
-            debt.dueDate || ''
-        ];
-        
-        // Escapování textových hodnot
-        const escapedRow = row.map(value => {
-            if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
-                return `"${value.replace(/"/g, '""')}"`;
-            }
-            return value;
-        });
-        
-        csvContent += escapedRow.join(',') + '\n';
-    });
-    
-    // Přidání informací o splátkách
-    csvContent += '\n\nSplátky\n';
-    csvContent += 'ID,ID dluhu,Částka,Datum,Poznámka\n';
-    
-    // Přidání řádků splátky
-    APP_DATA.debtPayments.forEach(payment => {
-        const row = [
-            payment.id,
-            payment.debtId,
-            payment.amount.toString().replace('.', ','),
-            payment.date,
-            payment.note || ''
-        ];
-        
-        // Escapování textových hodnot
-        const escapedRow = row.map(value => {
-            if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
-                return `"${value.replace(/"/g, '""')}"`;
-            }
-            return value;
-        });
-        
-        csvContent += escapedRow.join(',') + '\n';
-    });
-    
-    // Vytvoření a stažení souboru
-    downloadCSV(csvContent, 'dluhy.csv');
-}
-
-// Záloha dat
-function backupData() {
-    // Vytvoření objektu s daty
-    const backupObj = {
-        workLogs: APP_DATA.workLogs,
-        financeRecords: APP_DATA.financeRecords,
-        taskCategories: APP_DATA.taskCategories,
-        expenseCategories: APP_DATA.expenseCategories,
-        debts: APP_DATA.debts,
-        debtPayments: APP_DATA.debtPayments,
-        rentSettings: APP_DATA.rentSettings,
-        version: '1.0'
-    };
-    
-    // Převod na JSON
-    const jsonContent = JSON.stringify(backupObj, null, 2);
-    
-    // Vytvoření a stažení souboru
-    const blob = new Blob([jsonContent], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `pracovni-vykazy-zaloha-${formatDateFileName(new Date())}.json`;
-    document.body.appendChild(a);
-    a.click();
-    
-    // Cleanup
-    setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }, 100);
-}
-
-// Obnovení dat
-function restoreData(file) {
-    const reader = new FileReader();
-    
-    reader.onload = function(e) {
-        try {
-            const data = JSON.parse(e.target.result);
-            
-            // Validace dat
-            if (!data.version || !data.workLogs || !data.financeRecords) {
-                throw new Error('Neplatný formát záložního souboru.');
-            }
-            
-            // Potvrzení od uživatele
-            if (confirm('Tato akce přepíše všechna aktuální data. Pokračovat?')) {
-                // Uložení dat do úložiště
-                localStorage.setItem('workLogs', JSON.stringify(data.workLogs || []));
-                localStorage.setItem('financeRecords', JSON.stringify(data.financeRecords || []));
-                localStorage.setItem('taskCategories', JSON.stringify(data.taskCategories || []));
-                localStorage.setItem('expenseCategories', JSON.stringify(data.expenseCategories || []));
-                localStorage.setItem('debts', JSON.stringify(data.debts || []));
-                localStorage.setItem('debtPayments', JSON.stringify(data.debtPayments || []));
-                localStorage.setItem('rentSettings', JSON.stringify(data.rentSettings || { amount: 0, day: 1 }));
-                
-                // Načtení dat z úložiště
-                loadDataFromLocalStorage();
-                
-                // Obnovení zobrazení
-                displayWorkLogs();
-                displayFinanceRecords();
-                displayDeductions();
-                displayDebts();
-                displayCategories();
-                displayRentSettings();
-                updateDebtOptions();
-                
-                // Oznámení uživateli
-                alert('Data byla úspěšně obnovena.');
-            }
-        } catch (error) {
-            console.error('Chyba při obnovení dat:', error);
-            alert('Nastala chyba při obnovení dat. Zkontrolujte, zda je soubor ve správném formátu.');
-        }
-    };
-    
-    reader.readAsText(file);
-}
-
-// Smazání všech dat
-function clearAllData() {
-    // Smazání dat z úložiště
-    localStorage.removeItem('workLogs');
-    localStorage.removeItem('financeRecords');
-    localStorage.removeItem('taskCategories');
-    localStorage.removeItem('expenseCategories');
-    localStorage.removeItem('debts');
-    localStorage.removeItem('debtPayments');
-    localStorage.removeItem('rentSettings');
-    
-    // Inicializace lokálního úložiště s výchozími hodnotami
-    initializeLocalStorage();
-    
-    // Načtení dat z úložiště
-    loadDataFromLocalStorage();
-    
-    // Obnovení zobrazení
-    displayWorkLogs();
-    displayFinanceRecords();
-    displayDeductions();
-    displayDebts();
-    displayCategories();
-    displayRentSettings();
-    updateDebtOptions();
-    
-    // Oznámení uživateli
-    alert('Všechna data byla smazána.');
-}
-
-// Inicializace nastavení
-function initSettings() {
-    // Přidání kategorie úkolů
-    const addTaskCategoryBtn = document.getElementById('add-task-category');
-    const newTaskCategoryInput = document.getElementById('new-task-category');
-    
-    if (addTaskCategoryBtn && newTaskCategoryInput) {
-        addTaskCategoryBtn.addEventListener('click', function() {
-            const category = newTaskCategoryInput.value.trim();
-            
-            if (category) {
-                // Kontrola, zda kategorie již neexistuje
-                if (APP_DATA.taskCategories.includes(category)) {
-                    alert('Tato kategorie úkolů již existuje.');
-                    return;
-                }
-                
-                // Přidání kategorie
-                APP_DATA.taskCategories.push(category);
-                localStorage.setItem('taskCategories', JSON.stringify(APP_DATA.taskCategories));
-                
-                // Obnovení zobrazení
-                displayCategories();
-                populateCategorySelects();
-                
-                // Vyčištění vstupu
-                newTaskCategoryInput.value = '';
-            }
-        });
-    }
-    
-    // Přidání kategorie výdajů
-    const addExpenseCategoryBtn = document.getElementById('add-expense-category');
-    const newExpenseCategoryInput = document.getElementById('new-expense-category');
-    
-    if (addExpenseCategoryBtn && newExpenseCategoryInput) {
-        addExpenseCategoryBtn.addEventListener('click', function() {
-            const category = newExpenseCategoryInput.value.trim();
-            
-            if (category) {
-                // Kontrola, zda kategorie již neexistuje
-                if (APP_DATA.expenseCategories.includes(category)) {
-                    alert('Tato kategorie výdajů již existuje.');
-                    return;
-                }
-                
-                // Přidání kategorie
-                APP_DATA.expenseCategories.push(category);
-                localStorage.setItem('expenseCategories', JSON.stringify(APP_DATA.expenseCategories));
-                
-                // Obnovení zobrazení
-                displayCategories();
-                populateCategorySelects();
-                
-                // Vyčištění vstupu
-                newExpenseCategoryInput.value = '';
-            }
-        });
-    }
-    
-    // Uložení nastavení nájmu
-    const saveRentSettingsBtn = document.getElementById('save-rent-settings');
-    
-    if (saveRentSettingsBtn) {
-        saveRentSettingsBtn.addEventListener('click', function() {
-            const amount = parseFloat(document.getElementById('rent-amount').value) || 0;
-            const day = parseInt(document.getElementById('rent-day').value) || 1;
-            
-            // Validace
-            if (day < 1 || day > 31) {
-                alert('Den splatnosti musí být v rozmezí 1-31.');
-                return;
-            }
-            
-            // Uložení nastavení
-            APP_DATA.rentSettings = {
-                amount: amount,
-                day: day
-            };
-            
-            localStorage.setItem('rentSettings', JSON.stringify(APP_DATA.rentSettings));
-            
-            // Oznámení uživateli
-            alert('Nastavení nájmu bylo uloženo.');
-        });
-    }
-}
-
-// Zobrazení kategorií v nastavení
-function displayCategories() {
-    // Kategorie úkolů
-    const taskCategoriesList = document.getElementById('task-categories-list');
-    
-    if (taskCategoriesList) {
-        taskCategoriesList.innerHTML = '';
-        
-        if (APP_DATA.taskCategories.length === 0) {
-            taskCategoriesList.innerHTML = '<li class="empty-placeholder">Žádné kategorie úkolů.</li>';
-        } else {
-            APP_DATA.taskCategories.forEach(category => {
-                const li = document.createElement('li');
-                
-                // Zobrazení kategorie
-                li.innerHTML = `
-                    <span>${category}</span>
-                    <button type="button" class="delete-button" data-category="${category}">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
-                `;
-                
-                // Tlačítko pro smazání
-                const deleteBtn = li.querySelector('button');
-                deleteBtn.addEventListener('click', function() {
-                    const category = this.getAttribute('data-category');
-                    
-                    // Potvrzení od uživatele
-                    if (confirm(`Opravdu chcete smazat kategorii "${category}"?`)) {
-                        // Odstranění kategorie
-                        APP_DATA.taskCategories = APP_DATA.taskCategories.filter(c => c !== category);
-                        localStorage.setItem('taskCategories', JSON.stringify(APP_DATA.taskCategories));
-                        
-                        // Obnovení zobrazení
-                        displayCategories();
-                        populateCategorySelects();
-                    }
-                });
-                
-                taskCategoriesList.appendChild(li);
-            });
-        }
-    }
-    
-    // Kategorie výdajů
-    const expenseCategoriesList = document.getElementById('expense-categories-list');
-    
-    if (expenseCategoriesList) {
-        expenseCategoriesList.innerHTML = '';
-        
-        if (APP_DATA.expenseCategories.length === 0) {
-            expenseCategoriesList.innerHTML = '<li class="empty-placeholder">Žádné kategorie výdajů.</li>';
-        } else {
-            APP_DATA.expenseCategories.forEach(category => {
-                const li = document.createElement('li');
-                
-                // Zobrazení kategorie
-                li.innerHTML = `
-                    <span>${category}</span>
-                    <button type="button" class="delete-button" data-category="${category}">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
-                `;
-                
-                // Tlačítko pro smazání
-                const deleteBtn = li.querySelector('button');
-                deleteBtn.addEventListener('click', function() {
-                    const category = this.getAttribute('data-category');
-                    
-                    // Potvrzení od uživatele
-                    if (confirm(`Opravdu chcete smazat kategorii "${category}"?`)) {
-                        // Odstranění kategorie
-                        APP_DATA.expenseCategories = APP_DATA.expenseCategories.filter(c => c !== category);
-                        localStorage.setItem('expenseCategories', JSON.stringify(APP_DATA.expenseCategories));
-                        
-                        // Obnovení zobrazení
-                        displayCategories();
-                        populateCategorySelects();
-                    }
-                });
-                
-                expenseCategoriesList.appendChild(li);
-            });
-        }
-    }
-}
-
-// Zobrazení nastavení nájmu
-function displayRentSettings() {
-    const rentAmount = document.getElementById('rent-amount');
-    const rentDay = document.getElementById('rent-day');
-    
-    if (rentAmount && rentDay) {
-        rentAmount.value = APP_DATA.rentSettings.amount;
-        rentDay.value = APP_DATA.rentSettings.day;
-    }
-}
-
-// Zobrazení pracovních záznamů
-function displayWorkLogs() {
-    const workLogsAccordion = document.getElementById('work-logs-accordion');
-    
-    if (workLogsAccordion) {
-        // Získání filtrovaných záznamů
-        const filteredLogs = getFilteredWorkLogs();
-        
-        // Seřazení záznamů podle data (od nejnovějšího)
-        filteredLogs.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
-        
-        if (filteredLogs.length === 0) {
-            workLogsAccordion.innerHTML = '<div class="accordion-empty">Žádné záznamy k zobrazení. Zkuste změnit filtry nebo přidejte záznam v sekci Docházka.</div>';
-        } else {
-            workLogsAccordion.innerHTML = '';
-            
-            // Seskupení záznamů podle dne
-            const logsByDay = {};
-            
-            filteredLogs.forEach(log => {
-                const date = new Date(log.startTime);
-                const dateKey = formatDate(date);
-                
-                if (!logsByDay[dateKey]) {
-                    logsByDay[dateKey] = [];
-                }
-                
-                logsByDay[dateKey].push(log);
-            });
-            
-            // Seřazení dnů od nejnovějšího
-            const sortedDays = Object.keys(logsByDay).sort((a, b) => new Date(b) - new Date(a));
-            
-            // Vytvoření accordion pro každý den
-            sortedDays.forEach(day => {
-                const logs = logsByDay[day];
-                const totalHours = logs.reduce((total, log) => total + log.duration / (1000 * 60 * 60), 0);
-                const totalEarnings = logs.reduce((total, log) => total + log.earnings, 0);
-                
-                const accordionItem = document.createElement('div');
-                accordionItem.className = 'accordion-item';
-                
-                // Hlavička accordionu
-                const header = document.createElement('div');
-                header.className = 'accordion-header';
-                header.innerHTML = `
-                    <div>
-                        <strong>${day}</strong> (${logs.length} ${logs.length === 1 ? 'záznam' : logs.length >= 2 && logs.length <= 4 ? 'záznamy' : 'záznamů'})
-                    </div>
-                    <div>
-                        <span>${Math.round(totalHours * 100) / 100} h</span> | 
-                        <span>${totalEarnings} Kč</span>
-                    </div>
-                `;
-                
-                // Obsah accordionu
-                const content = document.createElement('div');
-                content.className = 'accordion-content';
-                
-                // Tabulka záznamů
-                let contentHTML = `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Osoba</th>
-                                <th>Úkol</th>
-                                <th>Čas</th>
-                                <th>Trvání</th>
-                                <th>Výdělek</th>
-                                <th>Akce</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                `;
-                
-                logs.forEach(log => {
-                    const startDate = new Date(log.startTime);
-                    const endDate = new Date(log.endTime);
-                    const durationHours = log.duration / (1000 * 60 * 60);
-                    
-                    const personName = log.person.charAt(0).toUpperCase() + log.person.slice(1);
-                    
-                    contentHTML += `
-                        <tr>
-                            <td>${personName}</td>
-                            <td>${log.activity}${log.note ? `<br><small>${log.note}</small>` : ''}</td>
-                            <td>${formatTime(startDate)} - ${formatTime(endDate)}</td>
-                            <td>${Math.round(durationHours * 100) / 100} h</td>
-                            <td>${log.earnings} Kč</td>
-                            <td>
-                                <button type="button" class="edit-log-button" data-id="${log.id}">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                <button type="button" class="delete-log-button" data-id="${log.id}">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    `;
-                });
-                
-                contentHTML += `
-                        </tbody>
-                    </table>
-                `;
-                
-                content.innerHTML = contentHTML;
-                
-                // Přidání event listenerů pro tlačítka úpravy a smazání
-                accordionItem.appendChild(header);
-                accordionItem.appendChild(content);
-                workLogsAccordion.appendChild(accordionItem);
-                
-                // Event listener pro rozbalení/sbalení accordionu
-                header.addEventListener('click', function() {
-                    content.classList.toggle('active');
-                });
-            });
-            
-            // Přidání event listenerů pro tlačítka úpravy a smazání
-            const editLogButtons = workLogsAccordion.querySelectorAll('.edit-log-button');
-            const deleteLogButtons = workLogsAccordion.querySelectorAll('.delete-log-button');
-            
-            editLogButtons.forEach(button => {
-                button.addEventListener('click', function(e) {
-                    e.stopPropagation(); // Zabrání rozbalení accordionu
-                    
-                    const id = this.getAttribute('data-id');
-                    editWorkLog(id);
-                });
-            });
-            
-            deleteLogButtons.forEach(button => {
-                button.addEventListener('click', function(e) {
-                    e.stopPropagation(); // Zabrání rozbalení accordionu
-                    
-                    const id = this.getAttribute('data-id');
-                    
-                    // Potvrzení od uživatele
-                    if (confirm('Opravdu chcete smazat tento záznam?')) {
-                        deleteWorkLog(id);
-                    }
-                });
-            });
-        }
-    }
-}
-
-// Získání filtrovaných pracovních záznamů
-function getFilteredWorkLogs() {
-    // Získání hodnot filtrů
-    const filterPerson = document.getElementById('filter-person').value;
-    const filterActivity = document.getElementById('filter-activity').value;
-    const filterStartDate = document.getElementById('filter-start-date').value;
-    const filterEndDate = document.getElementById('filter-end-date').value;
-    
-    // Filtrování záznamů
-    return APP_DATA.workLogs.filter(log => {
-        // Filtr podle osoby
-        if (filterPerson && log.person !== filterPerson) {
-            return false;
-        }
-        
-        // Filtr podle úkolu
-        if (filterActivity && log.activity !== filterActivity) {
-            return false;
-        }
-        
-        // Filtr podle data začátku
-        if (filterStartDate) {
-            const logDate = new Date(log.startTime);
-            const startDate = new Date(filterStartDate);
-            startDate.setHours(0, 0, 0, 0);
-            
-            if (logDate < startDate) {
-                return false;
-            }
-        }
-        
-        // Filtr podle data konce
-        if (filterEndDate) {
-            const logDate = new Date(log.startTime);
-            const endDate = new Date(filterEndDate);
-            endDate.setHours(23, 59, 59, 999);
-            
-            if (logDate > endDate) {
-                return false;
-            }
-        }
-        
-        return true;
-    });
-}
-
-// Úprava pracovního záznamu
-function editWorkLog(id) {
-    // Nalezení záznamu
-    const log = APP_DATA.workLogs.find(log => log.id === id);
-    
-    if (log) {
-        // Převod časů
-        const startDate = new Date(log.startTime);
-        const endDate = new Date(log.endTime);
-        
-        // Formátování dat pro formulář
-        const dateFormat = startDate.toISOString().split('T')[0];
-        const startTimeFormat = startDate.toTimeString().slice(0, 5);
-        const endTimeFormat = endDate.toTimeString().slice(0, 5);
-        
-        // Naplnění formuláře
-        document.getElementById('edit-log-id').value = log.id;
-        document.getElementById('manual-person').value = log.person;
-        document.getElementById('manual-date').value = dateFormat;
-        document.getElementById('manual-start-time').value = startTimeFormat;
-        document.getElementById('manual-end-time').value = endTimeFormat;
-        document.getElementById('manual-break-time').value = log.breakTime || 0;
-        document.getElementById('manual-activity').value = log.activity;
-        document.getElementById('manual-note').value = log.note || '';
-        
-        // Změna textu tlačítka
-        document.getElementById('save-log-button').innerHTML = '<i class="fas fa-save"></i> Uložit změny';
-        
-        // Zobrazení tlačítka pro zrušení úpravy
-        document.getElementById('cancel-edit-button').style.display = 'inline-block';
-        
-        // Přepnutí na sekci "Docházka"
-        document.querySelectorAll('.main-nav a').forEach(link => link.classList.remove('active'));
-        document.querySelectorAll('section').forEach(section => section.classList.remove('active'));
-        
-        document.querySelector('.main-nav a[data-section="dochazka"]').classList.add('active');
-        document.getElementById('dochazka').classList.add('active');
-        
-        // Skrytí mobilního menu
-        document.querySelector('.main-nav').classList.remove('show');
-        
-        // Scrollování na formulář
-        document.querySelector('.manual-entry').scrollIntoView({ behavior: 'smooth' });
-    }
-}
-
-// Smazání pracovního záznamu
-function deleteWorkLog(id) {
-    // Odstranění záznamu
-    APP_DATA.workLogs = APP_DATA.workLogs.filter(log => log.id !== id);
-    
-    // Uložení do úložiště
-    localStorage.setItem('workLogs', JSON.stringify(APP_DATA.workLogs));
-    
-    // Obnovení zobrazení
-    displayWorkLogs();
-    displayDeductions();
-    updateCharts();
-}
-
-// Zobrazení finančních záznamů
-function displayFinanceRecords() {
-    const financeTable = document.getElementById('finance-table');
-    
-    if (financeTable) {
-        if (APP_DATA.financeRecords.length === 0) {
-            financeTable.innerHTML = '<tr><td colspan="7" class="text-center empty-placeholder">Žádné finanční záznamy.</td></tr>';
-        } else {
-            // Seřazení záznamů podle data (od nejnovějšího)
-            const sortedRecords = [...APP_DATA.financeRecords].sort((a, b) => new Date(b.date) - new Date(a.date));
-            
-            financeTable.innerHTML = '';
-            
-            sortedRecords.forEach(record => {
-                const tr = document.createElement('tr');
-                
-                // Typ (příjem/výdaj)
-                const typeText = record.type === 'income' ? 'Příjem' : 'Výdaj';
-                const typeClass = record.type === 'income' ? 'text-success' : 'text-danger';
-                
-                // Formátování data
-                const date = new Date(record.date);
-                const formattedDate = formatDate(date);
-                
-                tr.innerHTML = `
-                    <td class="${typeClass}">${typeText}</td>
-                    <td>${record.description}</td>
-                    <td>${record.amount} ${record.currency}</td>
-                    <td>${record.currency}</td>
-                    <td>${formattedDate}</td>
-                    <td>${record.category || '-'}</td>
-                    <td>
-                        <button type="button" class="edit-finance-button" data-id="${record.id}">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button type="button" class="delete-finance-button" data-id="${record.id}">
-                            <i class="fas fa-trash-alt"></i>
-                        </button>
-                    </td>
-                `;
-                
-                financeTable.appendChild(tr);
-            });
-            
-            // Přidání event listenerů pro tlačítka úpravy a smazání
-            const editFinanceButtons = financeTable.querySelectorAll('.edit-finance-button');
-            const deleteFinanceButtons = financeTable.querySelectorAll('.delete-finance-button');
-            
-            editFinanceButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    const id = this.getAttribute('data-id');
-                    editFinanceRecord(id);
-                });
-            });
-            
-            deleteFinanceButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    const id = this.getAttribute('data-id');
-                    
-                    // Potvrzení od uživatele
-                    if (confirm('Opravdu chcete smazat tento finanční záznam?')) {
-                        deleteFinanceRecord(id);
-                    }
-                });
-            });
-        }
-    }
-}
-
-// Úprava finančního záznamu
-function editFinanceRecord(id) {
-    // Nalezení záznamu
-    const record = APP_DATA.financeRecords.find(record => record.id === id);
-    
-    if (record) {
-        // Naplnění formuláře
-        document.getElementById('edit-finance-id').value = record.id;
-        document.getElementById('finance-type').value = record.type;
-        document.getElementById('finance-date').value = record.date;
-        document.getElementById('finance-description').value = record.description;
-        document.getElementById('finance-category').value = record.category || '';
-        document.getElementById('finance-amount').value = record.amount;
-        document.getElementById('finance-currency').value = record.currency;
-        
-        // Změna textu tlačítka
-        document.getElementById('save-finance-button').innerHTML = '<i class="fas fa-save"></i> Uložit změny';
-        
-        // Zobrazení tlačítka pro zrušení úpravy
-        document.getElementById('cancel-finance-edit-button').style.display = 'inline-block';
-        
-        // Přepnutí na sekci "Finance"
-        document.querySelectorAll('.main-nav a').forEach(link => link.classList.remove('active'));
-        document.querySelectorAll('section').forEach(section => section.classList.remove('active'));
-        
-        document.querySelector('.main-nav a[data-section="finance"]').classList.add('active');
-        document.getElementById('finance').classList.add('active');
-        
-        // Skrytí mobilního menu
-        document.querySelector('.main-nav').classList.remove('show');
-        
-        // Scrollování na formulář
-        document.querySelector('.finance-entry').scrollIntoView({ behavior: 'smooth' });
-    }
-}
-
-// Smazání finančního záznamu
-function deleteFinanceRecord(id) {
-    // Odstranění záznamu
-    APP_DATA.financeRecords = APP_DATA.financeRecords.filter(record => record.id !== id);
-    
-    // Uložení do úložiště
-    localStorage.setItem('financeRecords', JSON.stringify(APP_DATA.financeRecords));
-    
-    // Obnovení zobrazení
-    displayFinanceRecords();
-}
-
-// Zobrazení srážek
-function displayDeductions() {
-    const deductionsTable = document.getElementById('deductions-summary-table');
-    
-    if (deductionsTable) {
-        // Výpočet srážek
-        const deductionsData = calculateDeductions();
-        
-        if (deductionsData.length === 0) {
-            deductionsTable.innerHTML = '<tr><td colspan="5" class="text-center empty-placeholder">Žádné záznamy pro výpočet srážek.</td></tr>';
-        } else {
-            deductionsTable.innerHTML = '';
-            
-            deductionsData.forEach(deduction => {
-                const tr = document.createElement('tr');
-                
-                // Formátování jména osoby
-                const personName = deduction.person.charAt(0).toUpperCase() + deduction.person.slice(1);
-                
-                tr.innerHTML = `
-                    <td>${personName}</td>
-                    <td>${deduction.month}</td>
-                    <td>${deduction.hoursWorked.toFixed(2)} h</td>
-                    <td>${deduction.grossEarnings} Kč</td>
-                    <td>${deduction.deduction} Kč</td>
-                `;
-                
-                deductionsTable.appendChild(tr);
-            });
-        }
-    }
-}
-
-// Výpočet srážek
-function calculateDeductions() {
-    // Vytvoření map pro srážky podle osoby a měsíce
-    const deductionsByPersonAndMonth = {};
-    
-    // Procházení záznamů
-    APP_DATA.workLogs.forEach(log => {
-        const startDate = new Date(log.startTime);
-        const year = startDate.getFullYear();
-        const month = startDate.getMonth() + 1;
-        const monthYear = `${month.toString().padStart(2, '0')}/${year}`;
-        
-        // Klíč pro mapu (osoba-měsíc)
-        const key = `${log.person}-${monthYear}`;
-        
-        if (!deductionsByPersonAndMonth[key]) {
-            deductionsByPersonAndMonth[key] = {
-                person: log.person,
-                month: monthYear,
-                hoursWorked: 0,
-                grossEarnings: 0
-            };
-        }
-        
-        // Přidání hodin a výdělku
-        deductionsByPersonAndMonth[key].hoursWorked += log.duration / (1000 * 60 * 60);
-        deductionsByPersonAndMonth[key].grossEarnings += log.earnings;
-    });
-    
-    // Převod map na pole a výpočet srážek
-    const deductionsArray = Object.values(deductionsByPersonAndMonth).map(deduction => {
-        // Výpočet srážky podle osoby
-        let deductionAmount = 0;
-        
-        if (deduction.person === 'maru') {
-            // Maru: 1/3 (cca 33.33%)
-            deductionAmount = Math.round(deduction.grossEarnings / 3);
-        } else if (deduction.person === 'marty') {
-            // Marty: 50%
-            deductionAmount = Math.round(deduction.grossEarnings * 0.5);
-        }
-        
-        return {
-            ...deduction,
-            deduction: deductionAmount
-        };
-    });
-    
-    // Seřazení podle měsíce (od nejnovějšího) a osoby
-    return deductionsArray.sort((a, b) => {
-        const [aMonth, aYear] = a.month.split('/');
-        const [bMonth, bYear] = b.month.split('/');
-        
-        // Porovnání podle roku a měsíce
-        if (aYear !== bYear) {
-            return parseInt(bYear) - parseInt(aYear);
-        }
-        
-        if (aMonth !== bMonth) {
-            return parseInt(bMonth) - parseInt(aMonth);
-        }
-        
-        // Porovnání podle osoby
-        return a.person.localeCompare(b.person);
-    });
-}
-
-// Zobrazení dluhů
-function displayDebts() {
+// Načtení dluhů
+function loadDebts() {
     const debtsList = document.getElementById('debts-list');
-    
-    if (debtsList) {
-        if (APP_DATA.debts.length === 0) {
+
+    if (!debtsList) return;
+
+    try {
+        const debts = JSON.parse(localStorage.getItem('debts')) || [];
+        const payments = JSON.parse(localStorage.getItem('debtPayments')) || [];
+
+        if (debts.length === 0) {
             debtsList.innerHTML = '<div class="accordion-empty">Žádné dluhy k zobrazení. Přidejte dluh níže.</div>';
-        } else {
-            debtsList.innerHTML = '';
-            
-            // Seřazení dluhů podle data vzniku (od nejnovějšího)
-            const sortedDebts = [...APP_DATA.debts].sort((a, b) => new Date(b.date) - new Date(a.date));
-            
-            sortedDebts.forEach(debt => {
-                // Formátování jména osoby
-                const personName = debt.person.charAt(0).toUpperCase() + debt.person.slice(1);
-                
-                // Výpočet splacené částky
-                const payments = APP_DATA.debtPayments.filter(payment => payment.debtId === debt.id);
-                const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
-                const remaining = debt.remaining;
-                const progress = debt.amount > 0 ? (totalPaid / debt.amount) * 100 : 0;
-                
-                // Status (splaceno/aktivní)
-                const isFullyPaid = remaining <= 0;
-                const statusClass = isFullyPaid ? 'debt-paid' : 'debt-active';
-                const statusText = isFullyPaid ? 'Splaceno' : 'Aktivní';
-                
-                // Datum splatnosti
-                const dueDate = debt.dueDate ? formatDate(new Date(debt.dueDate)) : 'Neurčeno';
-                
-                // Formátování data vzniku
-                const creationDate = formatDate(new Date(debt.date));
-                
-                // Vytvoření accordionu pro dluh
-                const accordionItem = document.createElement('div');
-                accordionItem.className = `accordion-item ${statusClass}`;
-                
-                // Hlavička accordionu
-                const header = document.createElement('div');
-                header.className = 'accordion-header';
-                header.innerHTML = `
-                    <div>
-                        <strong>${personName}</strong>: ${debt.description}
-                        <span class="debt-status">${statusText}</span>
-                    </div>
-                    <div>
-                        <span>${remaining} ${debt.currency} / ${debt.amount} ${debt.currency}</span>
-                    </div>
-                `;
-                
-                // Obsah accordionu
-                const content = document.createElement('div');
-                content.className = 'accordion-content';
-                
-                let contentHTML = `
-                    <div class="debt-details">
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${progress}%"></div>
-                        </div>
-                        <p><strong>Dlužník:</strong> ${personName}</p>
-                        <p><strong>Popis:</strong> ${debt.description}</p>
-                        <p><strong>Celková částka:</strong> ${debt.amount} ${debt.currency}</p>
-                        <p><strong>Zbývá splatit:</strong> ${remaining} ${debt.currency}</p>
-                        <p><strong>Splaceno:</strong> ${totalPaid} ${debt.currency} (${Math.round(progress)}%)</p>
-                        <p><strong>Datum vzniku:</strong> ${creationDate}</p>
-                        <p><strong>Datum splatnosti:</strong> ${dueDate}</p>
-                    </div>
-                `;
-                
-                // Přidání seznamu splátek, pokud existují
-                if (payments.length > 0) {
-                    contentHTML += `
-                        <div class="debt-payments">
-                            <h4>Historie splátek</h4>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Datum</th>
-                                        <th>Částka</th>
-                                        <th>Poznámka</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                    `;
-                    
-                    // Seřazení splátek podle data (od nejnovějšího)
-                    const sortedPayments = [...payments].sort((a, b) => new Date(b.date) - new Date(a.date));
-                    
-                    sortedPayments.forEach(payment => {
-                        const paymentDate = formatDate(new Date(payment.date));
-                        
-                        contentHTML += `
-                            <tr>
-                                <td>${paymentDate}</td>
-                                <td>${payment.amount} ${debt.currency}</td>
-                                <td>${payment.note || '-'}</td>
-                            </tr>
-                        `;
-                    });
-                    
-                    contentHTML += `
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                }
-                
-                // Přidání tlačítek pro úpravu a smazání
-                contentHTML += `
-                    <div class="debt-actions">
-                        <button type="button" class="edit-debt-button" data-id="${debt.id}">
-                            <i class="fas fa-edit"></i> Upravit dluh
-                        </button>
-                        <button type="button" class="delete-debt-button delete-button" data-id="${debt.id}">
-                            <i class="fas fa-trash-alt"></i> Smazat dluh
-                        </button>
-                    </div>
-                `;
-                
-                content.innerHTML = contentHTML;
-                
-                // Přidání event listenerů pro tlačítka
-                accordionItem.appendChild(header);
-                accordionItem.appendChild(content);
-                debtsList.appendChild(accordionItem);
-                
-                // Event listener pro rozbalení/sbalení accordionu
-                header.addEventListener('click', function() {
-                    content.classList.toggle('active');
-                });
-            });
-            
-            // Přidání event listenerů pro tlačítka úpravy a smazání
-            const editDebtButtons = debtsList.querySelectorAll('.edit-debt-button');
-            const deleteDebtButtons = debtsList.querySelectorAll('.delete-debt-button');
-            
-            editDebtButtons.forEach(button => {
-                button.addEventListener('click', function(e) {
-                    e.stopPropagation(); // Zabrání rozbalení accordionu
-                    
-                    const id = this.getAttribute('data-id');
-                    editDebt(id);
-                });
-            });
-            
-            deleteDebtButtons.forEach(button => {
-                button.addEventListener('click', function(e) {
-                    e.stopPropagation(); // Zabrání rozbalení accordionu
-                    
-                    const id = this.getAttribute('data-id');
-                    
-                    // Potvrzení od uživatele
-                    if (confirm('Opravdu chcete smazat tento dluh a všechny jeho splátky?')) {
-                        deleteDebt(id);
-                    }
-                });
-            });
+            return;
         }
+
+        // Vytvoření HTML pro dluhy
+        const html = debts.map(debt => {
+            // Výpočet zaplacené částky
+            const debtPayments = payments.filter(p => p.debtId === debt.id);
+            const totalPaid = debtPayments.reduce((sum, p) => sum + p.amount, 0);
+            const remaining = debt.amount - totalPaid;
+            const isPaid = remaining <= 0;
+
+            // Formátování dat
+            const dateCreated = new Date(debt.date).toLocaleDateString('cs-CZ');
+            const dateDue = debt.dueDate ? new Date(debt.dueDate).toLocaleDateString('cs-CZ') : '-';
+
+            // Vytvoření HTML pro splátky
+            let paymentsHtml = '';
+
+            if (debtPayments.length > 0) {
+                // Seřazení splátek podle data (nejnovější první)
+                debtPayments.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                paymentsHtml = `
+                    <div class="payments-list">
+                        <h4>Splátky</h4>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Datum</th>
+                                    <th>Částka</th>
+                                    <th>Poznámka</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${debtPayments.map(payment => {
+                                    const paymentDate = new Date(payment.date).toLocaleDateString('cs-CZ');
+                                    return `
+                                        <tr>
+                                            <td>${paymentDate}</td>
+                                            <td>${payment.amount.toFixed(2)} ${debt.currency}</td>
+                                            <td>${payment.note || '-'}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            // Výpočet procenta splacení
+            const paymentPercentage = (totalPaid / debt.amount) * 100;
+
+            return `
+                <div class="accordion-item">
+                    <div class="accordion-header" data-id="${debt.id}">
+                        <div class="debt-header-info">
+                            <span class="debt-person">${debt.person === 'maru' ? 'Maru' : 'Marty'}</span>
+                            <span class="debt-description">${debt.description}</span>
+                        </div>
+                        <div class="debt-header-amount">
+                            <span class="debt-status ${isPaid ? 'success-color' : 'warning-color'}">
+                                ${isPaid ? 'Splaceno' : 'Aktivní'}
+                            </span>
+                            <span class="debt-amount">
+                                ${totalPaid.toFixed(2)} / ${debt.amount.toFixed(2)} ${debt.currency}
+                            </span>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
+                    <div class="accordion-content">
+                        <div class="debt-details">
+                            <div class="debt-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: ${paymentPercentage}%;"></div>
+                                </div>
+                                <div class="progress-text">
+                                    Splaceno: ${paymentPercentage.toFixed(1)}%
+                                </div>
+                            </div>
+
+                            <div class="debt-info">
+                                <p><strong>Osoba:</strong> ${debt.person === 'maru' ? 'Maru' : 'Marty'}</p>
+                                <p><strong>Popis:</strong> ${debt.description}</p>
+                                <p><strong>Celková částka:</strong> ${debt.amount.toFixed(2)} ${debt.currency}</p>
+                                <p><strong>Zaplaceno:</strong> ${totalPaid.toFixed(2)} ${debt.currency}</p>
+                                <p><strong>Zbývá:</strong> ${remaining.toFixed(2)} ${debt.currency}</p>
+                                <p><strong>Datum vzniku:</strong> ${dateCreated}</p>
+                                <p><strong>Datum splatnosti:</strong> ${dateDue}</p>
+                            </div>
+
+                            ${paymentsHtml}
+
+                            <div class="debt-actions">
+                                <button class="edit-debt-button" data-id="${debt.id}">
+                                    <i class="fas fa-edit"></i> Upravit
+                                </button>
+                                <button class="delete-debt-button" data-id="${debt.id}">
+                                    <i class="fas fa-trash-alt"></i> Smazat
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        debtsList.innerHTML = html;
+
+        // Přidání posluchačů událostí pro akordeony
+        debtsList.querySelectorAll('.accordion-header').forEach(header => {
+            header.addEventListener('click', function() {
+                this.classList.toggle('active');
+                const content = this.nextElementSibling;
+
+                if (content.classList.contains('active')) {
+                    content.classList.remove('active');
+                } else {
+                    content.classList.add('active');
+                }
+            });
+        });
+
+        // Přidání posluchačů událostí pro tlačítka úpravy a smazání
+        debtsList.querySelectorAll('.edit-debt-button').forEach(button => {
+            button.addEventListener('click', editDebt);
+        });
+
+        debtsList.querySelectorAll('.delete-debt-button').forEach(button => {
+            button.addEventListener('click', deleteDebt);
+        });
+    } catch (error) {
+        console.error('Chyba při načítání dluhů:', error);
     }
 }
 
 // Úprava dluhu
-function editDebt(id) {
-    // Nalezení dluhu
-    const debt = APP_DATA.debts.find(debt => debt.id === id);
-    
-    if (debt) {
-        // Naplnění formuláře
-        document.getElementById('edit-debt-id').value = debt.id;
-        document.getElementById('debt-person').value = debt.person;
-        document.getElementById('debt-description').value = debt.description;
-        document.getElementById('debt-amount').value = debt.amount;
-        document.getElementById('debt-currency').value = debt.currency;
-        document.getElementById('debt-date').value = debt.date;
-        document.getElementById('debt-due-date').value = debt.dueDate || '';
-        
-        // Změna textu tlačítka
-        document.getElementById('save-debt-button').innerHTML = '<i class="fas fa-save"></i> Uložit změny';
-        
-        // Zobrazení tlačítka pro zrušení úpravy
-        document.getElementById('cancel-debt-edit-button').style.display = 'inline-block';
-        
-        // Přepnutí na sekci "Srážky"
-        document.querySelectorAll('.main-nav a').forEach(link => link.classList.remove('active'));
-        document.querySelectorAll('section').forEach(section => section.classList.remove('active'));
-        
-        document.querySelector('.main-nav a[data-section="srazky"]').classList.add('active');
-        document.getElementById('srazky').classList.add('active');
-        
-        // Skrytí mobilního menu
-        document.querySelector('.main-nav').classList.remove('show');
-        
-        // Scrollování na formulář
-        document.querySelector('.debt-entry').scrollIntoView({ behavior: 'smooth' });
+function editDebt(e) {
+    e.stopPropagation();
+    const debtId = this.getAttribute('data-id');
+
+    try {
+        const debts = JSON.parse(localStorage.getItem('debts')) || [];
+        const debt = debts.find(d => d.id === debtId);
+
+        if (debt) {
+            // Naplnění formuláře daty
+            document.getElementById('edit-debt-id').value = debt.id;
+            document.getElementById('debt-person').value = debt.person;
+            document.getElementById('debt-description').value = debt.description;
+            document.getElementById('debt-amount').value = debt.amount;
+            document.getElementById('debt-currency').value = debt.currency;
+            document.getElementById('debt-date').value = debt.date;
+
+            if (debt.dueDate) {
+                document.getElementById('debt-due-date').value = debt.dueDate;
+            } else {
+                document.getElementById('debt-due-date').value = '';
+            }
+
+            // Změna textu tlačítka a zobrazení tlačítka pro zrušení
+            document.getElementById('save-debt-button').innerHTML = '<i class="fas fa-save"></i> Uložit změny';
+            document.getElementById('cancel-debt-edit-button').style.display = 'inline-block';
+
+            // Posun na formulář
+            document.getElementById('debt-form').scrollIntoView({ behavior: 'smooth' });
+        }
+    } catch (error) {
+        console.error('Chyba při úpravě dluhu:', error);
     }
 }
 
 // Smazání dluhu
-function deleteDebt(id) {
-    // Odstranění dluhu
-    APP_DATA.debts = APP_DATA.debts.filter(debt => debt.id !== id);
-    
-    // Odstranění splátek dluhu
-    APP_DATA.debtPayments = APP_DATA.debtPayments.filter(payment => payment.debtId !== id);
-    
-    // Uložení do úložiště
-    localStorage.setItem('debts', JSON.stringify(APP_DATA.debts));
-    localStorage.setItem('debtPayments', JSON.stringify(APP_DATA.debtPayments));
-    
-    // Obnovení zobrazení
-    displayDebts();
-    updateDebtOptions();
-}
+function deleteDebt(e) {
+    e.stopPropagation();
+    const debtId = this.getAttribute('data-id');
 
-// Nastavení aktuálního data do formulářů
-function setCurrentDateToForms() {
-    const today = new Date().toISOString().split('T')[0];
-    
-    // Nastavení data pro ruční zadání záznamu
-    const manualDate = document.getElementById('manual-date');
-    if (manualDate && !manualDate.value) {
-        manualDate.value = today;
-    }
-    
-    // Nastavení data pro finanční záznam
-    const financeDate = document.getElementById('finance-date');
-    if (financeDate && !financeDate.value) {
-        financeDate.value = today;
-    }
-    
-    // Nastavení data pro dluh
-    const debtDate = document.getElementById('debt-date');
-    if (debtDate && !debtDate.value) {
-        debtDate.value = today;
-    }
-    
-    // Nastavení data pro splátku
-    const paymentDate = document.getElementById('payment-date');
-    if (paymentDate && !paymentDate.value) {
-        paymentDate.value = today;
+    if (confirm('Opravdu chcete smazat tento dluh a všechny jeho splátky?')) {
+        try {
+            const debts = JSON.parse(localStorage.getItem('debts')) || [];
+            const payments = JSON.parse(localStorage.getItem('debtPayments')) || [];
+
+            // Odstranění dluhu
+            const updatedDebts = debts.filter(d => d.id !== debtId);
+            localStorage.setItem('debts', JSON.stringify(updatedDebts));
+
+            // Odstranění splátek dluhu
+            const updatedPayments = payments.filter(p => p.debtId !== debtId);
+            localStorage.setItem('debtPayments', JSON.stringify(updatedPayments));
+
+            // Aktualizace zobrazení
+            loadDebts();
+
+            // Aktualizace select elementu pro splátky
+            loadDebtsForPaymentForm();
+        } catch (error) {
+            console.error('Chyba při mazání dluhu:', error);
+        }
     }
 }
 
-// Pomocné funkce pro formátování
+// Načtení přehledu srážek
+function loadDeductionsSummary() {
+    const deductionsTable = document.getElementById('deductions-summary-table');
 
-// Formátování data
-function formatDate(date) {
-    return `${date.getDate()}. ${date.getMonth() + 1}. ${date.getFullYear()}`;
+    if (!deductionsTable) return;
+
+    try {
+        const workLogs = JSON.parse(localStorage.getItem('workLogs')) || [];
+
+        if (workLogs.length === 0) {
+            deductionsTable.innerHTML = '<tr><td colspan="5" class="text-center empty-placeholder">Žádné záznamy pro výpočet srážek.</td></tr>';
+            return;
+        }
+
+        // Získání unikátních osob a měsíců
+        const workLogsByMonth = {};
+
+        workLogs.forEach(log => {
+            const date = new Date(log.startTime);
+            const month = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+            const monthKey = `${month}-${log.person}`;
+
+            if (!workLogsByMonth[monthKey]) {
+                workLogsByMonth[monthKey] = {
+                    person: log.person,
+                    month: month,
+                    totalDuration: 0,
+                    totalEarnings: 0
+                };
+            }
+
+            workLogsByMonth[monthKey].totalDuration += log.duration;
+            workLogsByMonth[monthKey].totalEarnings += log.earnings;
+        });
+
+        // Příprava dat pro tabulku
+        const summaryData = Object.values(workLogsByMonth);
+
+        // Seřazení podle data a osoby
+        summaryData.sort((a, b) => {
+            if (a.month !== b.month) {
+                return b.month.localeCompare(a.month);
+            }
+            return a.person.localeCompare(b.person);
+        });
+
+        // Kontrola, zda je měsíc kompletní
+        const currentDate = new Date();
+        const currentMonth = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}`;
+
+        // Vytvoření HTML pro tabulku
+        const html = summaryData.map(summary => {
+            // Přeskočení aktuálního měsíce
+            if (summary.month === currentMonth) {
+                return '';
+            }
+
+            // Formátování měsíce
+            const [year, month] = summary.month.split('-');
+            const monthText = new Date(year, month - 1, 1).toLocaleDateString('cs-CZ', { month: 'long', year: 'numeric' });
+
+            // Výpočet srážky
+            const deductionRate = DEDUCTION_RATES[summary.person];
+            const deduction = Math.round(summary.totalEarnings * deductionRate);
+
+            // Formátování doby
+            const hours = Math.floor(summary.totalDuration / (1000 * 60 * 60));
+            const minutes = Math.floor((summary.totalDuration % (1000 * 60 * 60)) / (1000 * 60));
+            const formattedDuration = `${hours} h ${minutes} min`;
+
+            return `
+                <tr>
+                    <td>${summary.person === 'maru' ? 'Maru' : 'Marty'}</td>
+                    <td>${monthText}</td>
+                    <td>${formattedDuration}</td>
+                    <td>${summary.totalEarnings.toFixed(0)} Kč</td>
+                    <td>${deduction.toFixed(0)} Kč</td>
+                </tr>
+            `;
+        }).filter(html => html !== '').join('');
+
+        if (html === '') {
+            deductionsTable.innerHTML = '<tr><td colspan="5" class="text-center empty-placeholder">Žádné záznamy pro výpočet srážek.</td></tr>';
+        } else {
+            deductionsTable.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('Chyba při načítání přehledu srážek:', error);
+    }
 }
 
-// Formátování času
-function formatTime(date) {
-    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+// ===== FILTRY A PŘEHLEDY =====
+function initFilters() {
+    const applyFiltersButton = document.getElementById('apply-filters');
+    const resetFiltersButton = document.getElementById('reset-filters');
+
+    if (applyFiltersButton) {
+        applyFiltersButton.addEventListener('click', function() {
+            loadWorkLogs();
+            updateCharts();
+        });
+    }
+
+    if (resetFiltersButton) {
+        resetFiltersButton.addEventListener('click', function() {
+            // Resetování formuláře filtrů
+            document.getElementById('filter-person').value = '';
+            document.getElementById('filter-activity').value = '';
+            document.getElementById('filter-start-date').value = '';
+            document.getElementById('filter-end-date').value = '';
+
+            // Znovu načtení záznamů a grafů
+            loadWorkLogs();
+            updateCharts();
+        });
+    }
+
+    // Načtení přehledů při zobrazení sekce
+    const prehledyLink = document.querySelector('a[data-section="prehledy"]');
+    if (prehledyLink) {
+        prehledyLink.addEventListener('click', function() {
+            loadWorkLogs();
+            updateCharts();
+        });
+    }
+
+    // Přepínač typů grafů
+    const chartTypeButtons = document.querySelectorAll('.chart-options button');
+    if (chartTypeButtons.length > 0) {
+        chartTypeButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                // Odstranění aktivní třídy ze všech tlačítek
+                chartTypeButtons.forEach(btn => btn.classList.remove('active'));
+
+                // Přidání aktivní třídy na kliknuté tlačítko
+                this.classList.add('active');
+
+                // Aktualizace grafu
+                updateCharts();
+            });
+        });
+    }
 }
 
-// Formátování data a času
-function formatDateTime(date) {
-    return `${formatDate(date)} ${formatTime(date)}`;
+// Načtení záznamů o práci (s filtry)
+function loadWorkLogs() {
+    const workLogsAccordion = document.getElementById('work-logs-accordion');
+
+    if (!workLogsAccordion) return;
+
+    try {
+        const workLogs = JSON.parse(localStorage.getItem('workLogs')) || [];
+
+        if (workLogs.length === 0) {
+            workLogsAccordion.innerHTML = '<div class="accordion-empty">Žádné záznamy k zobrazení. Zkuste změnit filtry nebo přidejte záznam v sekci Docházka.</div>';
+            return;
+        }
+
+        // Aplikace filtrů
+        const filterPerson = document.getElementById('filter-person').value;
+        const filterActivity = document.getElementById('filter-activity').value;
+        const filterStartDate = document.getElementById('filter-start-date').value;
+        const filterEndDate = document.getElementById('filter-end-date').value;
+
+        const filteredLogs = workLogs.filter(log => {
+            const logDate = new Date(log.startTime).toISOString().substring(0, 10);
+
+            return (
+                (!filterPerson || log.person === filterPerson) &&
+                (!filterActivity || log.activity === filterActivity) &&
+                (!filterStartDate || logDate >= filterStartDate) &&
+                (!filterEndDate || logDate <= filterEndDate)
+            );
+        });
+
+        if (filteredLogs.length === 0) {
+            workLogsAccordion.innerHTML = '<div class="accordion-empty">Žádné záznamy odpovídající filtrům. Zkuste změnit filtry.</div>';
+            return;
+        }
+
+        // Seřazení záznamů podle data (nejnovější první)
+        filteredLogs.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+
+        // Seskupení záznamů podle data
+        const logsByDate = {};
+
+        filteredLogs.forEach(log => {
+            const date = new Date(log.startTime).toISOString().substring(0, 10);
+
+            if (!logsByDate[date]) {
+                logsByDate[date] = [];
+            }
+
+            logsByDate[date].push(log);
+        });
+
+        // Vytvoření HTML pro akordeon
+        let html = '';
+
+        Object.keys(logsByDate).sort((a, b) => b.localeCompare(a)).forEach(date => {
+            const logs = logsByDate[date];
+            const formattedDate = new Date(date).toLocaleDateString('cs-CZ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+            // Výpočet celkového času a výdělku za den
+            const totalDuration = logs.reduce((sum, log) => sum + log.duration, 0);
+            const totalEarnings = logs.reduce((sum, log) => sum + log.earnings, 0);
+
+            // Formátování celkového času
+            const hours = Math.floor(totalDuration / (1000 * 60 * 60));
+            const minutes = Math.floor((totalDuration % (1000 * 60 * 60)) / (1000 * 60));
+            const formattedDuration = `${hours} h ${minutes} min`;
+
+            html += `
+                <div class="accordion-item">
+                    <div class="accordion-header" data-date="${date}">
+                        <div class="date-header-info">
+                            <span class="date-text">${formattedDate}</span>
+                            <span class="date-summary">${logs.length} záznam(ů), celkem ${formattedDuration}</span>
+                        </div>
+                        <div class="date-header-amount">
+                            <span class="date-earnings">${totalEarnings.toFixed(0)} Kč</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
+                    <div class="accordion-content">
+                        <div class="logs-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Osoba</th>
+                                        <th>Úkol</th>
+                                        <th>Začátek</th>
+                                        <th>Konec</th>
+                                        <th>Doba</th>
+                                        <th>Výdělek</th>
+                                        <th>Poznámka</th>
+                                        <th>Akce</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${logs.map(log => {
+                                        // Formátování časů
+                                        const startTime = new Date(log.startTime).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+                                        const endTime = new Date(log.endTime).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+
+                                        // Formátování doby
+                                        const logHours = Math.floor(log.duration / (1000 * 60 * 60));
+                                        const logMinutes = Math.floor((log.duration % (1000 * 60 * 60)) / (1000 * 60));
+                                        const logDuration = `${logHours} h ${logMinutes} min`;
+
+                                        return `
+                                            <tr>
+                                                <td>${log.person === 'maru' ? 'Maru' : 'Marty'}</td>
+                                                <td>${log.activity}</td>
+                                                <td>${startTime}</td>
+                                                <td>${endTime}</td>
+                                                <td>${logDuration}</td>
+                                                <td>${log.earnings.toFixed(0)} Kč</td>
+                                                <td>${log.note || '-'}</td>
+                                                <td>
+                                                    <button class="edit-log-button" data-id="${log.id}">
+                                                        <i class="fas fa-edit"></i>
+                                                    </button>
+                                                    <button class="delete-log-button" data-id="${log.id}">
+                                                        <i class="fas fa-trash-alt"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        workLogsAccordion.innerHTML = html;
+
+        // Přidání posluchačů událostí pro akordeon
+        workLogsAccordion.querySelectorAll('.accordion-header').forEach(header => {
+            header.addEventListener('click', function() {
+                this.classList.toggle('active');
+                const content = this.nextElementSibling;
+
+                if (content.classList.contains('active')) {
+                    content.classList.remove('active');
+                } else {
+                    content.classList.add('active');
+                }
+            });
+        });
+
+        // Přidání posluchačů událostí pro tlačítka úpravy a smazání
+        workLogsAccordion.querySelectorAll('.edit-log-button').forEach(button => {
+            button.addEventListener('click', editWorkLog);
+        });
+
+        workLogsAccordion.querySelectorAll('.delete-log-button').forEach(button => {
+            button.addEventListener('click', deleteWorkLog);
+        });
+    } catch (error) {
+        console.error('Chyba při načítání záznamů o práci:', error);
+    }
 }
 
-// Formátování data pro název souboru
-function formatDateFileName(date) {
-    return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+// Úprava záznamu o práci
+function editWorkLog(e) {
+    e.stopPropagation();
+    const logId = this.getAttribute('data-id');
+
+    try {
+        const workLogs = JSON.parse(localStorage.getItem('workLogs')) || [];
+        const log = workLogs.find(l => l.id === logId);
+
+        if (log) {
+            // Přepnutí na sekci Docházka
+            document.querySelector('a[data-section="dochazka"]').click();
+
+            // Naplnění formuláře pro ruční zadání záznamu
+            document.getElementById('edit-log-id').value = log.id;
+            document.getElementById('manual-person').value = log.person;
+
+            // Formátování data a časů
+            const startDate = new Date(log.startTime);
+            const endDate = new Date(log.endTime);
+
+            document.getElementById('manual-date').value = startDate.toISOString().substring(0, 10);
+            document.getElementById('manual-start-time').value = startDate.toTimeString().substring(0, 5);
+            document.getElementById('manual-end-time').value = endDate.toTimeString().substring(0, 5);
+
+            document.getElementById('manual-break-time').value = log.breakTime || 0;
+            document.getElementById('manual-activity').value = log.activity;
+            document.getElementById('manual-note').value = log.note || '';
+
+            // Změna textu tlačítka a zobrazení tlačítka pro zrušení
+            document.getElementById('save-log-button').innerHTML = '<i class="fas fa-save"></i> Uložit změny';
+            document.getElementById('cancel-edit-button').style.display = 'inline-block';
+
+            // Posun na formulář
+            document.getElementById('manual-entry-form').scrollIntoView({ behavior: 'smooth' });
+        }
+    } catch (error) {
+        console.error('Chyba při úpravě záznamu o práci:', error);
+    }
 }
 
-// Stažení CSV souboru
-function downloadCSV(content, filename) {
-    const blob = new Blob(["\uFEFF" + content], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    
-    // Cleanup
-    setTimeout(() => {
-        document.body.removeChild(a);
+// Smazání záznamu o práci
+function deleteWorkLog(e) {
+    e.stopPropagation();
+    const logId = this.getAttribute('data-id');
+
+    if (confirm('Opravdu chcete smazat tento záznam o práci?')) {
+        try {
+            const workLogs = JSON.parse(localStorage.getItem('workLogs')) || [];
+            const updatedLogs = workLogs.filter(l => l.id !== logId);
+            localStorage.setItem('workLogs', JSON.stringify(updatedLogs));
+
+            // Aktualizace zobrazení
+            loadWorkLogs();
+            updateCharts();
+            loadDeductionsSummary();
+        } catch (error) {
+            console.error('Chyba při mazání záznamu o práci:', error);
+        }
+    }
+}
+
+// ===== GRAFY =====
+let chart = null;
+
+function initCharts() {
+    // Inicializace grafů při načtení aplikace
+    updateCharts();
+
+    // Posluchač události pro export dat
+    document.getElementById('export-work-logs')?.addEventListener('click', exportWorkLogs);
+    document.getElementById('export-finance')?.addEventListener('click', exportFinance);
+    document.getElementById('export-deductions')?.addEventListener('click', exportDeductions);
+    document.getElementById('export-debts')?.addEventListener('click', exportDebts);
+}
+
+function updateCharts() {
+    const chartArea = document.getElementById('chart-area');
+    const chartNoData = document.getElementById('chart-no-data');
+
+    if (!chartArea || !chartNoData) return;
+
+    try {
+        const workLogs = JSON.parse(localStorage.getItem('workLogs')) || [];
+
+        // Aplikace filtrů
+        const filterPerson = document.getElementById('filter-person')?.value;
+        const filterActivity = document.getElementById('filter-activity')?.value;
+        const filterStartDate = document.getElementById('filter-start-date')?.value;
+        const filterEndDate = document.getElementById('filter-end-date')?.value;
+
+        const filteredLogs = workLogs.filter(log => {
+            const logDate = new Date(log.startTime).toISOString().substring(0, 10);
+
+            return (
+                (!filterPerson || log.person === filterPerson) &&
+                (!filterActivity || log.activity === filterActivity) &&
+                (!filterStartDate || logDate >= filterStartDate) &&
+                (!filterEndDate || logDate <= filterEndDate)
+            );
+        });
+
+        if (filteredLogs.length === 0) {
+            // Zobrazení zprávy o žádných datech
+            chartNoData.style.display = 'block';
+
+            // Zničení existujícího grafu, pokud existuje
+            if (chart) {
+                chart.destroy();
+                chart = null;
+            }
+
+            return;
+        }
+
+        // Skrytí zprávy o žádných datech
+        chartNoData.style.display = 'none';
+
+        // Určení typu grafu podle aktivního tlačítka
+        const activeChartType = document.querySelector('.chart-options button.active')?.getAttribute('data-chart-type') || 'person';
+
+        // Příprava dat pro graf
+        let labels = [];
+        let data = [];
+        let backgroundColor = [];
+        let title = '';
+
+        switch (activeChartType) {
+            case 'person':
+                title = 'Rozdělení práce podle osoby (hodiny)';
+
+                // Seskupení podle osoby
+                const dataByPerson = {
+                    'maru': 0,
+                    'marty': 0
+                };
+
+                filteredLogs.forEach(log => {
+                    dataByPerson[log.person] += log.duration / (1000 * 60 * 60);
+                });
+
+                labels = Object.keys(dataByPerson).map(person => person === 'maru' ? 'Maru' : 'Marty');
+                data = Object.values(dataByPerson).map(hours => Math.round(hours * 100) / 100);
+                backgroundColor = ['rgba(54, 162, 235, 0.8)', 'rgba(255, 99, 132, 0.8)'];
+                break;
+
+            case 'activity':
+                title = 'Rozdělení práce podle úkolu (hodiny)';
+
+                // Seskupení podle úkolu
+                const dataByActivity = {};
+
+                filteredLogs.forEach(log => {
+                    if (!dataByActivity[log.activity]) {
+                        dataByActivity[log.activity] = 0;
+                    }
+
+                    dataByActivity[log.activity] += log.duration / (1000 * 60 * 60);
+                });
+
+                labels = Object.keys(dataByActivity);
+                data = Object.values(dataByActivity).map(hours => Math.round(hours * 100) / 100);
+
+                // Generování barev pro každou aktivitu
+                backgroundColor = labels.map((_, index) => {
+                    const hue = (index * 137) % 360;
+                    return `hsla(${hue}, 70%, 60%, 0.8)`;
+                });
+                break;
+
+            case 'month':
+                title = 'Rozdělení práce podle měsíce (hodiny)';
+
+                // Seskupení podle měsíce
+                const dataByMonth = {};
+
+                filteredLogs.forEach(log => {
+                    const date = new Date(log.startTime);
+                    const month = date.toLocaleString('cs-CZ', { month: 'long', year: 'numeric' });
+
+                    if (!dataByMonth[month]) {
+                        dataByMonth[month] = 0;
+                    }
+
+                    dataByMonth[month] += log.duration / (1000 * 60 * 60);
+                });
+
+                // Seřazení měsíců chronologicky
+                const monthNames = Object.keys(dataByMonth);
+                const sortedMonths = monthNames.sort((a, b) => {
+                    const [aMonth, aYear] = a.split(' ');
+                    const [bMonth, bYear] = b.split(' ');
+
+                    if (aYear !== bYear) {
+                        return parseInt(aYear) - parseInt(bYear);
+                    }
+
+                    const monthOrder = {
+                        'leden': 0, 'únor': 1, 'březen': 2, 'duben': 3, 'květen': 4, 'červen': 5,
+                        'červenec': 6, 'srpen': 7, 'září': 8, 'říjen': 9, 'listopad': 10, 'prosinec': 11
+                    };
+
+                    return monthOrder[aMonth] - monthOrder[bMonth];
+                });
+
+                labels = sortedMonths;
+                data = labels.map(month => Math.round(dataByMonth[month] * 100) / 100);
+
+                // Generování barev pro každý měsíc
+                backgroundColor = labels.map((_, index) => {
+                    const hue = (index * 30) % 360;
+                    return `hsla(${hue}, 70%, 60%, 0.8)`;
+                });
+                break;
+        }
+
+        // Vytvoření nebo aktualizace grafu
+        if (chart) {
+            chart.destroy();
+        }
+
+        chart = new Chart(chartArea, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: backgroundColor,
+                    borderColor: backgroundColor.map(color => color.replace('0.8', '1')),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            font: {
+                                size: 14
+                            }
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: title,
+                        font: {
+                            size: 16,
+                            weight: 'bold'
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw;
+                                const percentage = Math.round((value / data.reduce((a, b) => a + b, 0)) * 100);
+                                return `${label}: ${value} h (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Chyba při aktualizaci grafů:', error);
+    }
+}
+
+// ===== NASTAVENÍ =====
+function initSettings() {
+    // Přidání kategorie úkolu
+    const addTaskCategoryBtn = document.getElementById('add-task-category');
+    const newTaskCategoryInput = document.getElementById('new-task-category');
+
+    if (addTaskCategoryBtn && newTaskCategoryInput) {
+        addTaskCategoryBtn.addEventListener('click', function() {
+            const newCategory = newTaskCategoryInput.value.trim();
+
+            if (newCategory) {
+                try {
+                    const taskCategories = JSON.parse(localStorage.getItem('taskCategories')) || [];
+
+                    // Kontrola, zda kategorie již neexistuje
+                    if (taskCategories.includes(newCategory)) {
+                        alert('Tato kategorie již existuje.');
+                        return;
+                    }
+
+                    taskCategories.push(newCategory);
+                    localStorage.setItem('taskCategories', JSON.stringify(taskCategories));
+
+                    // Vyčištění vstupu
+                    newTaskCategoryInput.value = '';
+
+                    // Aktualizace seznamů a select elementů
+                    loadCategories();
+                } catch (error) {
+                    console.error('Chyba při přidávání kategorie úkolu:', error);
+                }
+            }
+        });
+    }
+
+    // Přidání kategorie výdajů
+    const addExpenseCategoryBtn = document.getElementById('add-expense-category');
+    const newExpenseCategoryInput = document.getElementById('new-expense-category');
+
+    if (addExpenseCategoryBtn && newExpenseCategoryInput) {
+        addExpenseCategoryBtn.addEventListener('click', function() {
+            const newCategory = newExpenseCategoryInput.value.trim();
+
+            if (newCategory) {
+                try {
+                    const expenseCategories = JSON.parse(localStorage.getItem('expenseCategories')) || [];
+
+                    // Kontrola, zda kategorie již neexistuje
+                    if (expenseCategories.includes(newCategory)) {
+                        alert('Tato kategorie již existuje.');
+                        return;
+                    }
+
+                    expenseCategories.push(newCategory);
+                    localStorage.setItem('expenseCategories', JSON.stringify(expenseCategories));
+
+                    // Vyčištění vstupu
+                    newExpenseCategoryInput.value = '';
+
+                    // Aktualizace seznamů a select elementů
+                    loadCategories();
+                } catch (error) {
+                    console.error('Chyba při přidávání kategorie výdajů:', error);
+                }
+            }
+        });
+    }
+
+    // Nastavení nájmu
+    const saveRentSettingsBtn = document.getElementById('save-rent-settings');
+
+    if (saveRentSettingsBtn) {
+        saveRentSettingsBtn.addEventListener('click', function() {
+            const rentAmount = parseFloat(document.getElementById('rent-amount').value);
+            const rentDay = parseInt(document.getElementById('rent-day').value);
+
+            if (isNaN(rentAmount) || isNaN(rentDay) || rentDay < 1 || rentDay > 31) {
+                alert('Zadejte platné hodnoty pro nájem a den splatnosti.');
+                return;
+            }
+
+            try {
+                localStorage.setItem('rentSettings', JSON.stringify({
+                    amount: rentAmount,
+                    day: rentDay
+                }));
+
+                alert('Nastavení nájmu bylo uloženo.');
+            } catch (error) {
+                console.error('Chyba při ukládání nastavení nájmu:', error);
+            }
+        });
+
+        // Načtení existujících nastavení nájmu
+        try {
+            const rentSettings = JSON.parse(localStorage.getItem('rentSettings')) || { amount: 0, day: 1 };
+            document.getElementById('rent-amount').value = rentSettings.amount;
+            document.getElementById('rent-day').value = rentSettings.day;
+        } catch (error) {
+            console.error('Chyba při načítání nastavení nájmu:', error);
+        }
+    }
+
+    // Zálohování dat
+    const backupDataBtn = document.getElementById('backup-data');
+
+    if (backupDataBtn) {
+        backupDataBtn.addEventListener('click', function() {
+            try {
+                const data = {
+                    workLogs: JSON.parse(localStorage.getItem('workLogs')) || [],
+                    financeRecords: JSON.parse(localStorage.getItem('financeRecords')) || [],
+                    taskCategories: JSON.parse(localStorage.getItem('taskCategories')) || [],
+                    expenseCategories: JSON.parse(localStorage.getItem('expenseCategories')) || [],
+                    debts: JSON.parse(localStorage.getItem('debts')) || [],
+                    debtPayments: JSON.parse(localStorage.getItem('debtPayments')) || [],
+                    rentSettings: JSON.parse(localStorage.getItem('rentSettings')) || { amount: 0, day: 1 }
+                };
+
+                const jsonData = JSON.stringify(data, null, 2);
+                const blob = new Blob([jsonData], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+
+                const now = new Date();
+                const dateStr = now.toISOString().substring(0, 10);
+                const filename = `pracovni-vykazy-zaloha-${dateStr}.json`;
+
+                // Vytvoření dočasného odkazu pro stažení
+                const downloadLink = document.createElement('a');
+                downloadLink.href = url;
+                downloadLink.download = filename;
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Chyba při zálohování dat:', error);
+                alert('Chyba při zálohování dat. Zkuste to znovu.');
+            }
+        });
+    }
+
+    // Obnovení dat ze zálohy
+    const importDataInput = document.getElementById('import-data-input');
+
+    if (importDataInput) {
+        importDataInput.addEventListener('change', function(e) {
+            if (e.target.files.length === 0) return;
+
+            const file = e.target.files[0];
+
+            if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
+                alert('Vyberte platný soubor JSON.');
+                return;
+            }
+
+            if (confirm('Obnovením dat ze zálohy přepíšete všechna existující data. Chcete pokračovat?')) {
+                const reader = new FileReader();
+
+                reader.onload = function(event) {
+                    try {
+                        const data = JSON.parse(event.target.result);
+
+                        // Kontrola platnosti dat
+                        if (!data.workLogs || !data.financeRecords || !data.taskCategories || !data.expenseCategories || !data.debts || !data.debtPayments) {
+                            throw new Error('Neplatný formát dat.');
+                        }
+
+                        // Uložení dat do local storage
+                        localStorage.setItem('workLogs', JSON.stringify(data.workLogs));
+                        localStorage.setItem('financeRecords', JSON.stringify(data.financeRecords));
+                        localStorage.setItem('taskCategories', JSON.stringify(data.taskCategories));
+                        localStorage.setItem('expenseCategories', JSON.stringify(data.expenseCategories));
+                        localStorage.setItem('debts', JSON.stringify(data.debts));
+                        localStorage.setItem('debtPayments', JSON.stringify(data.debtPayments));
+
+                        if (data.rentSettings) {
+                            localStorage.setItem('rentSettings', JSON.stringify(data.rentSettings));
+                        }
+
+                        alert('Data byla úspěšně obnovena ze zálohy. Stránka bude obnovena.');
+                        location.reload();
+                    } catch (error) {
+                        console.error('Chyba při obnovování dat:', error);
+                        alert('Chyba při obnovování dat. Ujistěte se, že máte platný soubor zálohy.');
+                    }
+                };
+
+                reader.readAsText(file);
+            }
+
+            // Vyčištění vstupu pro případ, že by uživatel chtěl znovu nahrát stejný soubor
+            e.target.value = '';
+        });
+    }
+
+    // Smazání všech dat
+    const clearAllDataBtn = document.getElementById('clear-all-data');
+
+    if (clearAllDataBtn) {
+        clearAllDataBtn.addEventListener('click', function() {
+            if (confirm('POZOR! Opravdu chcete smazat všechna data? Tato akce je nevratná!')) {
+                if (confirm('Poslední varování: Všechna vaše data budou smazána. Pokračovat?')) {
+                    try {
+                        localStorage.removeItem('workLogs');
+                        localStorage.removeItem('financeRecords');
+                        localStorage.removeItem('taskCategories');
+                        localStorage.removeItem('expenseCategories');
+                        localStorage.removeItem('debts');
+                        localStorage.removeItem('debtPayments');
+                        localStorage.removeItem('rentSettings');
+
+                        alert('Všechna data byla smazána. Stránka bude obnovena.');
+                        location.reload();
+                    } catch (error) {
+                        console.error('Chyba při mazání dat:', error);
+                        alert('Chyba při mazání dat.');
+                    }
+                }
+            }
+        });
+    }
+}
+
+// ===== EXPORT DAT =====
+function exportWorkLogs() {
+    try {
+        const workLogs = JSON.parse(localStorage.getItem('workLogs')) || [];
+
+        if (workLogs.length === 0) {
+            alert('Žádné záznamy k exportu.');
+            return;
+        }
+
+        // Aplikace filtrů
+        const filterPerson = document.getElementById('filter-person')?.value;
+        const filterActivity = document.getElementById('filter-activity')?.value;
+        const filterStartDate = document.getElementById('filter-start-date')?.value;
+        const filterEndDate = document.getElementById('filter-end-date')?.value;
+
+        const filteredLogs = workLogs.filter(log => {
+            const logDate = new Date(log.startTime).toISOString().substring(0, 10);
+
+            return (
+                (!filterPerson || log.person === filterPerson) &&
+                (!filterActivity || log.activity === filterActivity) &&
+                (!filterStartDate || logDate >= filterStartDate) &&
+                (!filterEndDate || logDate <= filterEndDate)
+            );
+        });
+
+        if (filteredLogs.length === 0) {
+            alert('Žádné záznamy odpovídající filtrům.');
+            return;
+        }
+
+        // Vytvoření CSV dat
+        let csvContent = 'Osoba,Úkol,Začátek,Konec,Doba (h),Výdělek (Kč),Poznámka\n';
+
+        filteredLogs.forEach(log => {
+            const person = log.person === 'maru' ? 'Maru' : 'Marty';
+            const startTime = new Date(log.startTime).toLocaleString('cs-CZ');
+            const endTime = new Date(log.endTime).toLocaleString('cs-CZ');
+            const duration = (log.duration / (1000 * 60 * 60)).toFixed(2);
+            const earnings = log.earnings.toFixed(0);
+            const note = log.note ? `"${log.note.replace(/"/g, '""')}"` : '';
+
+            csvContent += `${person},${log.activity},${startTime},${endTime},${duration},${earnings},${note}\n`;
+        });
+
+        // Export do souboru
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+
+        const now = new Date();
+        const dateStr = now.toISOString().substring(0, 10);
+        const filename = `pracovni-vykazy-export-${dateStr}.csv`;
+
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = filename;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
         URL.revokeObjectURL(url);
-    }, 100);
+    } catch (error) {
+        console.error('Chyba při exportu záznamů:', error);
+        alert('Chyba při exportu záznamů.');
+    }
+}
+
+function exportFinance() {
+    try {
+        const financeRecords = JSON.parse(localStorage.getItem('financeRecords')) || [];
+
+        if (financeRecords.length === 0) {
+            alert('Žádné finanční záznamy k exportu.');
+            return;
+        }
+
+        // Vytvoření CSV dat
+        let csvContent = 'Typ,Popis,Částka,Měna,Datum,Kategorie\n';
+
+        financeRecords.forEach(record => {
+            const type = record.type === 'income' ? 'Příjem' : 'Výdaj';
+            const date = new Date(record.date).toLocaleDateString('cs-CZ');
+            const description = `"${record.description.replace(/"/g, '""')}"`;
+            const category = record.category ? `"${record.category.replace(/"/g, '""')}"` : '';
+
+            csvContent += `${type},${description},${record.amount.toFixed(2)},${record.currency},${date},${category}\n`;
+        });
+
+        // Export do souboru
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+
+        const now = new Date();
+        const dateStr = now.toISOString().substring(0, 10);
+        const filename = `finance-export-${dateStr}.csv`;
+
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = filename;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Chyba při exportu finančních záznamů:', error);
+        alert('Chyba při exportu finančních záznamů.');
+    }
+}
+
+function exportDeductions() {
+    try {
+        const workLogs = JSON.parse(localStorage.getItem('workLogs')) || [];
+
+        if (workLogs.length === 0) {
+            alert('Žádné záznamy pro výpočet srážek.');
+            return;
+        }
+
+        // Výpočet srážek podle měsíců
+        const deductionsByMonth = {};
+
+        workLogs.forEach(log => {
+            const date = new Date(log.startTime);
+            const month = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+            const monthKey = `${month}-${log.person}`;
+
+            if (!deductionsByMonth[monthKey]) {
+                deductionsByMonth[monthKey] = {
+                    person: log.person,
+                    month: month,
+                    totalDuration: 0,
+                    totalEarnings: 0
+                };
+            }
+
+            deductionsByMonth[monthKey].totalDuration += log.duration;
+            deductionsByMonth[monthKey].totalEarnings += log.earnings;
+        });
+
+        // Příprava dat pro CSV
+        const summaryData = Object.values(deductionsByMonth);
+
+        // Seřazení podle data a osoby
+        summaryData.sort((a, b) => {
+            if (a.month !== b.month) {
+                return b.month.localeCompare(a.month);
+            }
+            return a.person.localeCompare(b.person);
+        });
+
+        // Kontrola, zda je měsíc kompletní
+        const currentDate = new Date();
+        const currentMonth = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}`;
+
+        // Filtrace kompletních měsíců
+        const completeMonths = summaryData.filter(summary => summary.month !== currentMonth);
+
+        if (completeMonths.length === 0) {
+            alert('Žádné kompletní měsíce pro výpočet srážek.');
+            return;
+        }
+
+        // Vytvoření CSV dat
+        let csvContent = 'Osoba,Měsíc,Celkem odpracováno (h),Hrubý výdělek (Kč),Srážka (%),Srážka (Kč)\n';
+
+        completeMonths.forEach(summary => {
+            const person = summary.person === 'maru' ? 'Maru' : 'Marty';
+            const [year, month] = summary.month.split('-');
+            const monthText = new Date(year, month - 1, 1).toLocaleDateString('cs-CZ', { month: 'long', year: 'numeric' });
+
+            // Výpočet srážky
+            const deductionRate = DEDUCTION_RATES[summary.person] * 100;
+            const deduction = Math.round(summary.totalEarnings * DEDUCTION_RATES[summary.person]);
+
+            // Formátování doby
+            const hours = (summary.totalDuration / (1000 * 60 * 60)).toFixed(2);
+
+            csvContent += `${person},${monthText},${hours},${summary.totalEarnings.toFixed(0)},${deductionRate.toFixed(2)},${deduction}\n`;
+        });
+
+        // Export do souboru
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+
+        const now = new Date();
+        const dateStr = now.toISOString().substring(0, 10);
+        const filename = `srazky-export-${dateStr}.csv`;
+
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = filename;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Chyba při exportu srážek:', error);
+        alert('Chyba při exportu srážek.');
+    }
+}
+
+function exportDebts() {
+    try {
+        const debts = JSON.parse(localStorage.getItem('debts')) || [];
+        const payments = JSON.parse(localStorage.getItem('debtPayments')) || [];
+
+        if (debts.length === 0) {
+            alert('Žádné dluhy k exportu.');
+            return;
+        }
+
+        // Vytvoření CSV dat pro dluhy
+        let csvContent = 'Osoba,Popis,Celková částka,Měna,Datum vzniku,Datum splatnosti,Zaplaceno,Zbývá\n';
+
+        debts.forEach(debt => {
+            const person = debt.person === 'maru' ? 'Maru' : 'Marty';
+            const dateCreated = new Date(debt.date).toLocaleDateString('cs-CZ');
+            const dateDue = debt.dueDate ? new Date(debt.dueDate).toLocaleDateString('cs-CZ') : '';
+
+            // Výpočet zaplacené částky
+            const debtPayments = payments.filter(p => p.debtId === debt.id);
+            const totalPaid = debtPayments.reduce((sum, p) => sum + p.amount, 0);
+            const remaining = debt.amount - totalPaid;
+
+            // Popis (escapování uvozovek)
+            const description = `"${debt.description.replace(/"/g, '""')}"`;
+
+            csvContent += `${person},${description},${debt.amount.toFixed(2)},${debt.currency},${dateCreated},${dateDue},${totalPaid.toFixed(2)},${remaining.toFixed(2)}\n`;
+        });
+
+        // Export do souboru
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+
+        const now = new Date();
+        const dateStr = now.toISOString().substring(0, 10);
+        const filename = `dluhy-export-${dateStr}.csv`;
+
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = filename;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Chyba při exportu dluhů:', error);
+        alert('Chyba při exportu dluhů.');
+    }
+}
+
+// Pomocná funkce pro generování ID
+function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
 }
